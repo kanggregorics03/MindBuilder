@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../core/utils/json_utils.dart';
 import '../data/app_database.dart';
 import '../data/entry_repository.dart';
+import '../domain/cbt_catalog.dart';
 
 class DetailScreen extends StatefulWidget {
   const DetailScreen({
@@ -90,7 +91,9 @@ class _DetailScreenState extends State<DetailScreen> {
           }
 
           final tags = decodeJsonStringList(entry.situationTagsJson);
-          final distortions = decodeJsonStringList(entry.distortionsJson);
+          final distortions = decodeJsonStringList(
+            entry.distortionsJson,
+          ).map(distortionLabel).toList();
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -117,7 +120,9 @@ class _DetailScreenState extends State<DetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('템플릿: ${entry.negativeTemplateId}'),
+                    Text(
+                      '템플릿: ${negativeTemplateLabel(entry.negativeTemplateId)}',
+                    ),
                     const SizedBox(height: 8),
                     Text(entry.negativeText),
                     if (entry.negativeConfidence != null) ...[
@@ -128,8 +133,10 @@ class _DetailScreenState extends State<DetailScreen> {
                       const SizedBox(height: 8),
                       Text('빈도: ${entry.negativeFrequency}'),
                     ],
-                    const SizedBox(height: 8),
-                    Text('왜곡(JSON): ${distortions.join(", ")}'),
+                    if (distortions.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text('왜곡: ${distortions.join(", ")}'),
+                    ],
                   ],
                 ),
               ),
@@ -139,7 +146,9 @@ class _DetailScreenState extends State<DetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('템플릿: ${entry.balancedTemplateId}'),
+                    Text(
+                      '템플릿: ${balancedTemplateLabel(entry.balancedTemplateId)}',
+                    ),
                     const SizedBox(height: 8),
                     Text(entry.balancedText),
                     if (entry.emotionBefore != null) ...[
