@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local temporary files for doc parsing/debugging
+tmp_*
+negative_thought.zip

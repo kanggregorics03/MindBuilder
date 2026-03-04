@@ -1,3 +1,5 @@
+import 'negative_thought_index.dart';
+
 const Map<String, List<String>> _negativeByTag = <String, List<String>>{
   '업무/학업': <String>['성과가 안 나오면 끝이야', '실수하면 신뢰를 잃을 거야'],
   '발표/면접': <String>['말문이 막히면 망해', '긴장한 모습이 들킬 거야'],
@@ -160,3 +162,373 @@ List<String> _prioritize(List<String> prioritized, List<String> defaults) {
   }
   return merged;
 }
+
+class RoutingOption {
+  const RoutingOption({
+    required this.id,
+    required this.label,
+  });
+
+  final String id;
+  final String label;
+}
+
+class RoutingQuestion {
+  const RoutingQuestion({
+    required this.id,
+    required this.question,
+    required this.options,
+  });
+
+  final String id;
+  final String question;
+  final List<RoutingOption> options;
+}
+
+class BranchAnswerOutcome {
+  const BranchAnswerOutcome({
+    this.nextQuestionId,
+    this.distortionId,
+    this.restartToRoot = false,
+  });
+
+  final String? nextQuestionId;
+  final String? distortionId;
+  final bool restartToRoot;
+}
+
+class BranchRoutingResult {
+  const BranchRoutingResult({
+    required this.topDistortionId,
+    required this.recommendations,
+  });
+
+  final String topDistortionId;
+  final List<String> recommendations;
+}
+
+class NegativeRecommendationFlow {
+  static const String rootQuestionId = 'Q0';
+
+  static RoutingQuestion questionById(
+    String questionId, {
+    Set<String> excludedRootBranches = const <String>{},
+  }) {
+    if (questionId == rootQuestionId) {
+      final List<RoutingOption> options = _questionMap[rootQuestionId]!.options
+          .where((RoutingOption option) => !excludedRootBranches.contains(option.id))
+          .toList();
+      if (options.isEmpty) {
+        return _questionMap[rootQuestionId]!;
+      }
+      return RoutingQuestion(
+        id: rootQuestionId,
+        question: _questionMap[rootQuestionId]!.question,
+        options: options,
+      );
+    }
+    return _questionMap[questionId] ?? _questionMap[rootQuestionId]!;
+  }
+
+  static bool isRootBranchOption(String optionId) => optionId.startsWith('B');
+
+  static String? branchToQuestionId(String branchOptionId) =>
+      _rootBranchToQuestionId[branchOptionId];
+
+  static BranchAnswerOutcome answer({
+    required String questionId,
+    required String optionId,
+  }) {
+    final Map<String, BranchAnswerOutcome>? rule = _answerRules[questionId];
+    if (rule == null) {
+      return const BranchAnswerOutcome(restartToRoot: true);
+    }
+    return rule[optionId] ?? const BranchAnswerOutcome(restartToRoot: true);
+  }
+
+  static BranchRoutingResult buildResult({
+    required String distortionId,
+    required String? situationDetail,
+    required String? situationMajor,
+  }) {
+    return BranchRoutingResult(
+      topDistortionId: distortionId,
+      recommendations: recommendByDistortion(
+        distortionId: distortionId,
+        situationDetail: situationDetail,
+        situationMajor: situationMajor,
+      ),
+    );
+  }
+
+  static List<String> recommendByDistortion({
+    required String distortionId,
+    String? situationDetail,
+    String? situationMajor,
+  }) {
+    final List<String> fromDetailDistortion =
+        (situationDetail != null && situationDetail.isNotEmpty)
+        ? (kNegativeThoughtByDetail[situationDetail]?[distortionId] ??
+              const <String>[])
+        : const <String>[];
+    final List<String> fromMajorDistortion =
+        (situationMajor != null && situationMajor.isNotEmpty)
+        ? (kNegativeThoughtByMajor[situationMajor]?[distortionId] ??
+              const <String>[])
+        : const <String>[];
+    final List<String> fromDistortion = _distortionSentences[distortionId] ?? const <String>[];
+    const List<String> fallback = <String>[
+      '한 군데만 틀리면 이번 평가는 끝이야.',
+      '지금 시작해도 결국 늦을 거야.',
+      '지금 저 반응이면 다들 내가 문제라고 생각하는 거야.',
+      '이렇게 떨리는 걸 보면 내가 준비가 모자란 거야.',
+    ];
+
+    final List<String> merged = <String>[];
+    for (final String sentence in <String>[
+      ...fromDetailDistortion,
+      ...fromMajorDistortion,
+      ...fromDistortion,
+      ...fallback,
+    ]) {
+      if (!merged.contains(sentence)) {
+        merged.add(sentence);
+      }
+      if (merged.length == 5) {
+        break;
+      }
+    }
+    return merged;
+  }
+}
+
+const Map<String, String> _rootBranchToQuestionId = <String, String>{
+  'B1': 'Q1-1',
+  'B2': 'Q2-1',
+  'B3': 'Q3-1',
+  'B4': 'Q4-1',
+  'B5': 'Q5-1',
+};
+
+const Map<String, RoutingQuestion> _questionMap = <String, RoutingQuestion>{
+  'Q0': RoutingQuestion(
+    id: 'Q0',
+    question: '지금 네 마음에서 제일 크게 걸리는 건 어떤 쪽이야?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'B1', label: '상대가 나를 어떻게 볼지, 무슨 생각할지 너무 신경 쓰여'),
+      RoutingOption(id: 'B2', label: '앞으로 안 좋은 일이 생길까 봐 걱정돼'),
+      RoutingOption(id: 'B3', label: '나나 상대가 꼭 이래야 한다는 생각이 들어'),
+      RoutingOption(id: 'B4', label: '이게 누구 잘못인지 자꾸 따지게 돼'),
+      RoutingOption(id: 'B5', label: '있었던 일을 내가 너무 안 좋게 받아들이는 것 같아'),
+    ],
+  ),
+  'Q1-1': RoutingQuestion(
+    id: 'Q1-1',
+    question: '혹시 상대가 직접 말한 건 아닌데, 그냥 분명 이렇게 생각할 거야 하고 느끼고 있어?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q1_1_Y', label: '응, 그냥 그렇게 생각할 것 같아'),
+      RoutingOption(id: 'Q1_1_N', label: '아니, 그 정도는 아니야'),
+    ],
+  ),
+  'Q1-2': RoutingQuestion(
+    id: 'Q1-2',
+    question: '그 일의 이유를 자꾸 너무 내 탓으로 돌리거나, 반대로 너무 상대 탓으로만 보고 있는 것 같아?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q1_2_ME', label: '다 내 잘못인 것 같아'),
+      RoutingOption(id: 'Q1_2_OTHER', label: '다 상대 때문인 것 같아'),
+      RoutingOption(id: 'Q1_2_NONE', label: '꼭 그렇게 한쪽만의 문제는 아닌 것 같아'),
+    ],
+  ),
+  'Q2-1': RoutingQuestion(
+    id: 'Q2-1',
+    question: '아직 일어나지도 않았는데, 벌써부터 안 좋은 쪽으로 끝날 것 같다고 느껴져?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q2_1_Y', label: '응, 뭔가 안 좋게 될 것 같아'),
+      RoutingOption(id: 'Q2_1_N', label: '아니, 그렇게까지 확신하는 건 아니야'),
+    ],
+  ),
+  'Q3-1': RoutingQuestion(
+    id: 'Q3-1',
+    question: '지금 머릿속에 이건 꼭 이래야 해, 이러면 안 돼 같은 생각이 계속 맴돌아?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q3_1_Y', label: '응, 꼭 이래야 할 것 같아'),
+      RoutingOption(id: 'Q3_1_N', label: '아니, 그런 건 아니야'),
+    ],
+  ),
+  'Q4-1': RoutingQuestion(
+    id: 'Q4-1',
+    question: '이 일은 거의 한 사람 책임이라고 느껴져?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q4_1_ME', label: '거의 다 내 책임 같아'),
+      RoutingOption(id: 'Q4_1_OTHER', label: '거의 다 상대 책임 같아'),
+      RoutingOption(id: 'Q4_1_NONE', label: '아니, 한 사람만의 문제는 아닌 것 같아'),
+    ],
+  ),
+  'Q5-1': RoutingQuestion(
+    id: 'Q5-1',
+    question: '하나 있었던 일 때문에, 전체가 다 그런 것처럼 느껴지고 있어?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q5_1_Y', label: '응, 하나만 봐도 다 그런 것처럼 느껴져'),
+      RoutingOption(id: 'Q5_1_N', label: '아니, 그건 아니야'),
+    ],
+  ),
+  'Q5-2': RoutingQuestion(
+    id: 'Q5-2',
+    question: '혹시 항상 이래, 난 원래 이래, 맨날 똑같아 같은 생각이 들어?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q5_2_Y', label: '응, 자꾸 그런 식으로 생각돼'),
+      RoutingOption(id: 'Q5_2_N', label: '아니, 그렇게까지는 아니야'),
+    ],
+  ),
+  'Q5-3': RoutingQuestion(
+    id: 'Q5-3',
+    question: '중간은 잘 안 보이고, 그냥 잘했냐 망했냐처럼 딱 둘 중 하나로 느껴져?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q5_3_Y', label: '응, 그냥 둘 중 하나처럼 느껴져'),
+      RoutingOption(id: 'Q5_3_N', label: '아니, 꼭 그렇진 않아'),
+    ],
+  ),
+  'Q5-4': RoutingQuestion(
+    id: 'Q5-4',
+    question: '좋았던 부분도 있었는데, 이상하게 안 좋았던 쪽만 계속 눈에 들어와?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q5_4_Y', label: '응, 안 좋은 쪽만 계속 보여'),
+      RoutingOption(id: 'Q5_4_N', label: '아니, 그 정도는 아니야'),
+    ],
+  ),
+  'Q5-5': RoutingQuestion(
+    id: 'Q5-5',
+    question: '누가 칭찬해주거나 괜찮은 일이 있어도, 별거 아니야 하고 넘기게 돼?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q5_5_Y', label: '응, 좋은 일도 별거 아닌 것처럼 넘기게 돼'),
+      RoutingOption(id: 'Q5_5_N', label: '아니, 그건 아니야'),
+    ],
+  ),
+  'Q5-6': RoutingQuestion(
+    id: 'Q5-6',
+    question: '실수한 건 엄청 크게 느껴지고, 반대로 잘한 건 되게 작게 느껴져?',
+    options: <RoutingOption>[
+      RoutingOption(
+        id: 'Q5_6_Y',
+        label: '응, 실수는 엄청 크게 느껴지고 잘한 건 별거 아닌 것 같아',
+      ),
+      RoutingOption(id: 'Q5_6_N', label: '아니, 꼭 그렇진 않아'),
+    ],
+  ),
+  'Q5-7': RoutingQuestion(
+    id: 'Q5-7',
+    question: '혹시 지금 드는 불안하거나 우울한 느낌 때문에, 그 느낌이 곧 사실처럼 느껴져?',
+    options: <RoutingOption>[
+      RoutingOption(id: 'Q5_7_Y', label: '응, 내가 느끼는 게 그냥 사실처럼 느껴져'),
+      RoutingOption(id: 'Q5_7_N', label: '아니, 그 정도는 아니야'),
+    ],
+  ),
+};
+
+const Map<String, Map<String, BranchAnswerOutcome>> _answerRules =
+    <String, Map<String, BranchAnswerOutcome>>{
+      'Q1-1': <String, BranchAnswerOutcome>{
+        'Q1_1_Y': BranchAnswerOutcome(distortionId: 'G5'),
+        'Q1_1_N': BranchAnswerOutcome(nextQuestionId: 'Q1-2'),
+      },
+      'Q1-2': <String, BranchAnswerOutcome>{
+        'Q1_2_ME': BranchAnswerOutcome(distortionId: 'G10'),
+        'Q1_2_OTHER': BranchAnswerOutcome(distortionId: 'G10'),
+        'Q1_2_NONE': BranchAnswerOutcome(restartToRoot: true),
+      },
+      'Q2-1': <String, BranchAnswerOutcome>{
+        'Q2_1_Y': BranchAnswerOutcome(distortionId: 'G6'),
+        'Q2_1_N': BranchAnswerOutcome(restartToRoot: true),
+      },
+      'Q3-1': <String, BranchAnswerOutcome>{
+        'Q3_1_Y': BranchAnswerOutcome(distortionId: 'G9'),
+        'Q3_1_N': BranchAnswerOutcome(restartToRoot: true),
+      },
+      'Q4-1': <String, BranchAnswerOutcome>{
+        'Q4_1_ME': BranchAnswerOutcome(distortionId: 'G10'),
+        'Q4_1_OTHER': BranchAnswerOutcome(distortionId: 'G10'),
+        'Q4_1_NONE': BranchAnswerOutcome(restartToRoot: true),
+      },
+      'Q5-1': <String, BranchAnswerOutcome>{
+        'Q5_1_Y': BranchAnswerOutcome(nextQuestionId: 'Q5-2'),
+        'Q5_1_N': BranchAnswerOutcome(nextQuestionId: 'Q5-4'),
+      },
+      'Q5-2': <String, BranchAnswerOutcome>{
+        'Q5_2_Y': BranchAnswerOutcome(distortionId: 'G2'),
+        'Q5_2_N': BranchAnswerOutcome(nextQuestionId: 'Q5-3'),
+      },
+      'Q5-3': <String, BranchAnswerOutcome>{
+        'Q5_3_Y': BranchAnswerOutcome(distortionId: 'G1'),
+        'Q5_3_N': BranchAnswerOutcome(nextQuestionId: 'Q5-4'),
+      },
+      'Q5-4': <String, BranchAnswerOutcome>{
+        'Q5_4_Y': BranchAnswerOutcome(distortionId: 'G3'),
+        'Q5_4_N': BranchAnswerOutcome(nextQuestionId: 'Q5-5'),
+      },
+      'Q5-5': <String, BranchAnswerOutcome>{
+        'Q5_5_Y': BranchAnswerOutcome(distortionId: 'G4'),
+        'Q5_5_N': BranchAnswerOutcome(nextQuestionId: 'Q5-6'),
+      },
+      'Q5-6': <String, BranchAnswerOutcome>{
+        'Q5_6_Y': BranchAnswerOutcome(distortionId: 'G7'),
+        'Q5_6_N': BranchAnswerOutcome(nextQuestionId: 'Q5-7'),
+      },
+      'Q5-7': <String, BranchAnswerOutcome>{
+        'Q5_7_Y': BranchAnswerOutcome(distortionId: 'G8'),
+        'Q5_7_N': BranchAnswerOutcome(restartToRoot: true),
+      },
+    };
+
+const Map<String, List<String>> _distortionSentences = <String, List<String>>{
+  'G1': <String>[
+    '한 군데만 틀리면 이번 평가는 끝이야.',
+    '최고 아니면 의미 없어.',
+    '완벽하게 준비했어야 했는데 난 또 부족해.',
+  ],
+  'G2': <String>[
+    '지난번에 버벅였으니 이번에도 똑같을 거야.',
+    '예전에 한 번 지적받았잖아, 또 그럴 거야.',
+    '한 번 망하면 늘 망한다.',
+  ],
+  'G3': <String>[
+    '방금 말 꼬인 것만 다들 기억할 거야.',
+    '잘한 부분은 아무도 안 보고 틀린 것만 볼 거야.',
+    '이 한 번의 지연이 전부를 덮을 거야.',
+  ],
+  'G4': <String>[
+    '칭찬은 그냥 예의로 한 말이야.',
+    '결과가 좋게 나와도 운이 좋았던 거지.',
+    '잘한 건 별거 아니고 다음에 바로 들통날 거야.',
+  ],
+  'G5': <String>[
+    '면접관 표정 보니까 이미 마음 정한 것 같아.',
+    '저 반응이면 내 답이 별로였다는 뜻이야.',
+    '지금 조용한 거 보니 다들 별로라고 생각하는 거야.',
+    '방금 그 눈빛은 왜 저렇게 말하지였어.',
+  ],
+  'G6': <String>[
+    '오늘 평가는 분명 낮게 나올 거야.',
+    '이번엔 분명 마감 못 맞출 거야.',
+    '결과는 이미 나쁘게 정해져 있어.',
+  ],
+  'G7': <String>[
+    '사소한 말실수도 엄청 크게 보일 거야.',
+    '한 시간만 늦어도 치명적이야.',
+    '작은 지연도 치명적으로 커질 거야.',
+  ],
+  'G8': <String>[
+    '이렇게 떨리는 걸 보면 내가 준비가 모자란 거야.',
+    '마음이 불편하니까 결과도 안 좋을 거야.',
+    '불안이 올라오는 걸 보면 위험한 상황이야.',
+  ],
+  'G9': <String>[
+    '답은 바로바로 나와야 해, 고민하면 끝이야.',
+    '마감은 어떤 일이 있어도 지켜야 해.',
+    '쉬면 안 돼, 끝날 때까지 해야 해.',
+  ],
+  'G10': <String>[
+    '분위기가 어색해진 건 내가 말을 잘못해서야.',
+    '팀 결과가 안 나오면 내가 발목 잡은 거지.',
+    '성과가 흔들리면 결국 내 책임으로 돌아올 거야.',
+  ],
+};
