@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:mind_builder/features/recommend/recommend.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,6 +37,11 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
       TextEditingController();
   final Random _random = Random();
   String _situationHint = '';
+  String? _selectedRecommendedNegative;
+  List<String> _negativeRecommendations = <String>[];
+  String _negativeCurrentQuestionId = NegativeRecommendationFlow.rootQuestionId;
+  final List<String> _negativeQuestionHistory = <String>[];
+  BranchRoutingResult? _negativeRoutingResult;
 
   final Map<String, List<String>> _detailBySituation = <String, List<String>>{
     '일/학업': <String>[
@@ -156,6 +162,7 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
     ),
     const _StepQuestion(title: '소감정을 선택하세요.', options: <String>[]),
     const _StepQuestion(title: '대감정별 감정 감도와 목표 감도를 조절하세요.', options: <String>[]),
+    const _StepQuestion(title: '보노와 대화하며 부정 문장을 추천받으세요.', options: <String>[]),
   ];
 
   int _stepIndex = 0;
@@ -173,6 +180,9 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
   bool get _isMajorEmotionStep => _stepIndex == 3;
   bool get _isMinorEmotionStep => _stepIndex == 4;
   bool get _isIntensityStep => _stepIndex == 5;
+  bool get _isNegativeSentenceStep => _stepIndex == 6;
+  bool get _isNegativePickPhase =>
+      _isNegativeSentenceStep && _negativeRoutingResult != null;
   bool get _canGoBack => _isDone || _stepIndex > 0;
 
   _StepQuestion get _currentQuestion {
@@ -180,6 +190,20 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
       return _StepQuestion(
         title: _steps[1].title,
         options: _detailBySituation[_selectedSituation] ?? const <String>['기타'],
+      );
+    }
+    if (_isNegativeSentenceStep) {
+      if (_isNegativePickPhase) {
+        return _StepQuestion(
+          title:
+              '보노 추론 결과 1순위: ${_negativeRoutingResult?.topDistortionId ?? '-'}\n가장 가까운 부정 문장을 고르세요.',
+          options: _negativeRecommendations,
+        );
+      }
+      final RoutingQuestion question = _currentNegativeQuestion;
+      return _StepQuestion(
+        title: question.question,
+        options: question.options.map((RoutingOption option) => option.label).toList(),
       );
     }
     if (_isMinorEmotionStep) {
@@ -209,6 +233,16 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
     setState(() {
       if (_isDone) {
         _stepIndex = _steps.length - 1;
+      } else if (_isNegativeSentenceStep) {
+        if (_isNegativePickPhase) {
+          _selectedRecommendedNegative = null;
+          _negativeRecommendations = <String>[];
+          _negativeRoutingResult = null;
+        } else if (_negativeQuestionHistory.isNotEmpty) {
+          _negativeCurrentQuestionId = _negativeQuestionHistory.removeLast();
+        } else {
+          _stepIndex = 5;
+        }
       } else if (_isIntensityStep) {
         _stepIndex = 3;
       } else if (_isMinorEmotionStep) {
@@ -222,6 +256,10 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
 
   void _selectOption(String value) {
     if (_isDone) {
+      return;
+    }
+    if (_isNegativeSentenceStep) {
+      _selectNegativeOptionValue(value);
       return;
     }
     if (_isMajorEmotionStep) {
@@ -342,8 +380,84 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
 
   void _finishIntensitySelection() {
     setState(() {
-      _stepIndex = _steps.length;
+      _stepIndex = 6;
+      _resetNegativeFlow();
     });
+  }
+
+  RoutingQuestion get _currentNegativeQuestion => NegativeRecommendationFlow.questionById(
+    _negativeCurrentQuestionId,
+  );
+
+  void _selectNegativeOptionValue(String value) {
+    if (_isNegativePickPhase) {
+      setState(() {
+        _selectedRecommendedNegative = value;
+        _stepIndex = _steps.length;
+      });
+      return;
+    }
+
+    RoutingOption? selectedOption;
+    for (final RoutingOption option in _currentNegativeQuestion.options) {
+      if (option.label == value) {
+        selectedOption = option;
+        break;
+      }
+    }
+    if (selectedOption == null) {
+      return;
+    }
+    final RoutingOption pickedOption = selectedOption;
+    setState(() {
+      if (_negativeCurrentQuestionId == NegativeRecommendationFlow.rootQuestionId) {
+        final String? next =
+            NegativeRecommendationFlow.branchToQuestionId(pickedOption.id);
+        if (next != null) {
+          _negativeQuestionHistory.add(_negativeCurrentQuestionId);
+          _negativeCurrentQuestionId = next;
+        }
+        return;
+      }
+
+      final BranchAnswerOutcome outcome = NegativeRecommendationFlow.answer(
+        questionId: _negativeCurrentQuestionId,
+        optionId: pickedOption.id,
+      );
+
+      if (outcome.distortionId != null) {
+        _negativeRoutingResult = NegativeRecommendationFlow.buildResult(
+          distortionId: outcome.distortionId!,
+          situationDetail: _selectedDetail ?? _selectedSituation,
+          situationMajor: _selectedSituation,
+        );
+        _negativeRecommendations = _negativeRoutingResult!.recommendations;
+        _selectedRecommendedNegative = null;
+        return;
+      }
+
+      if (outcome.nextQuestionId != null) {
+        _negativeQuestionHistory.add(_negativeCurrentQuestionId);
+        _negativeCurrentQuestionId = outcome.nextQuestionId!;
+        return;
+      }
+
+      if (outcome.restartToRoot) {
+        _negativeQuestionHistory.add(_negativeCurrentQuestionId);
+        _negativeCurrentQuestionId = NegativeRecommendationFlow.rootQuestionId;
+        if (_negativeQuestionHistory.length > 25) {
+          _negativeQuestionHistory.removeRange(0, 10);
+        }
+      }
+    });
+  }
+
+  void _resetNegativeFlow() {
+    _selectedRecommendedNegative = null;
+    _negativeRecommendations = <String>[];
+    _negativeCurrentQuestionId = NegativeRecommendationFlow.rootQuestionId;
+    _negativeQuestionHistory.clear();
+    _negativeRoutingResult = null;
   }
 
   void _backToMajorEmotionStep() {
@@ -366,6 +480,7 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
       _intensityByMajor.clear();
       _targetIntensityByMajor.clear();
       _activeMajorEmotion = null;
+      _resetNegativeFlow();
     });
   }
 
@@ -573,7 +688,7 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
         final String option = question.options[index];
         final bool selected = _isMajorEmotionStep
             ? _selectedMajorEmotions.contains(option)
-            : false;
+            : (_isNegativePickPhase ? _selectedRecommendedNegative == option : false);
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
@@ -721,7 +836,9 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
         '상황: ${_selectedSituation ?? '-'} / ${_selectedDetail ?? '-'}\n'
         '구체적 상황: ${_situationContext.isEmpty ? '-' : _situationContext}\n'
         '감정: $major\n'
-        '감도: ${emotionSummary.isEmpty ? '-' : emotionSummary.join(' / ')}';
+        '감도: ${emotionSummary.isEmpty ? '-' : emotionSummary.join(' / ')}\n'
+        '인지오류 1순위: ${_negativeRoutingResult?.topDistortionId ?? '-'}\n'
+        '추천 부정문장: ${_selectedRecommendedNegative ?? '-'}';
   }
 }
 
