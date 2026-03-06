@@ -549,7 +549,7 @@ class _AkinatorStyleScreenState extends State<AkinatorStyleScreen> {
                         ),
                         clipBehavior: Clip.antiAlias,
                         child: Image.asset(
-                          'bono.png',
+                          'assets/bono.png',
                           fit: BoxFit.cover,
                           errorBuilder: (_, _, _) =>
                               const Icon(Icons.person, size: 60),
