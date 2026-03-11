@@ -47,3 +47,5 @@ app.*.map.json
 # Local temporary files for doc parsing/debugging
 tmp_*
 tmp_negative_docx/
+backend/.venv/
+backend/.env

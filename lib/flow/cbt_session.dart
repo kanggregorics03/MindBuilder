@@ -6,6 +6,7 @@ import '../features/conversation_widgets.dart';
 import '../features/emotion.dart';
 import '../features/intervention.dart';
 import '../features/situation.dart';
+import '../services/situation_service.dart';
 
 class CbtSessionScreen extends StatefulWidget {
   const CbtSessionScreen({super.key});
@@ -15,12 +16,16 @@ class CbtSessionScreen extends StatefulWidget {
 }
 
 class _CbtSessionScreenState extends State<CbtSessionScreen> {
+  final SituationService _situationService = const SituationService();
+
   int _stepIndex = 0;
   SituationDraft _situation = const SituationDraft();
   EmotionDraft _emotion = const EmotionDraft();
   AutomaticThoughtDraft _automaticThought = const AutomaticThoughtDraft();
   CognitiveDistortionDraft _distortion = const CognitiveDistortionDraft();
   InterventionDraft _intervention = const InterventionDraft();
+  bool _isRefiningSituation = false;
+  String? _situationError;
 
   bool get _isComplete => _stepIndex > 4;
 
@@ -31,7 +36,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
     switch (_stepIndex) {
       case 0:
-        return _situation.rawSituation.trim().isNotEmpty;
+        return _situation.rawSituation.trim().isNotEmpty && !_isRefiningSituation;
       case 1:
         return _emotion.isComplete;
       case 2:
@@ -48,10 +53,16 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
   String get _nextLabel => _stepIndex == 4 ? '요약 보기' : '다음';
 
-  void _goNext() {
+  Future<void> _goNext() async {
     if (!_canProceed) {
       return;
     }
+
+    if (_stepIndex == 0) {
+      await _refineSituationAndContinue();
+      return;
+    }
+
     setState(() {
       _stepIndex += 1;
     });
@@ -75,14 +86,95 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       _automaticThought = const AutomaticThoughtDraft();
       _distortion = const CognitiveDistortionDraft();
       _intervention = const InterventionDraft();
+      _isRefiningSituation = false;
+      _situationError = null;
     });
+  }
+
+  Future<void> _refineSituationAndContinue() async {
+    final String rawSituation = _situation.rawSituation.trim();
+    if (rawSituation.isEmpty) {
+      return;
+    }
+
+    if (_situation.refinedSituation.trim().isNotEmpty) {
+      setState(() {
+        _stepIndex += 1;
+      });
+      return;
+    }
+
+    setState(() {
+      _isRefiningSituation = true;
+      _situationError = null;
+    });
+
+    try {
+      final String refinedSituation = await _situationService.refineSituation(
+        rawSituation,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _situation = _situation.copyWith(refinedSituation: refinedSituation);
+        _stepIndex += 1;
+      });
+    } on SituationServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _situationError = error.message;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      const String message = '상황 문장을 정리하는 중에 알 수 없는 오류가 발생했어요.';
+      setState(() {
+        _situationError = message;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(message)),
+      );
+    } finally {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isRefiningSituation = false;
+      });
+    }
   }
 
   String _fallbackText(String text) {
     if (text.trim().isEmpty) {
-      return '추후 구현 예정 또는 미입력';
+      return '아직 입력되지 않았어요.';
     }
     return text;
+  }
+
+  String _refinedSituationPrompt() {
+    final String refinedSituation = _situation.refinedSituation.trim();
+    if (refinedSituation.isNotEmpty) {
+      return refinedSituation;
+    }
+
+    final String rawSituation = _situation.rawSituation.trim();
+    if (rawSituation.isNotEmpty) {
+      return rawSituation;
+    }
+
+    return '상황 문장을 먼저 입력해줘.';
   }
 
   @override
@@ -112,7 +204,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Text(
-                          '보노와 함께하는 CBT',
+                          '보노와 대화하는 CBT',
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
@@ -131,7 +223,9 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
                 Row(
                   children: <Widget>[
                     OutlinedButton(
-                      onPressed: _stepIndex == 0 ? null : _goBack,
+                      onPressed: _stepIndex == 0 || _isRefiningSituation
+                          ? null
+                          : _goBack,
                       child: const Text('이전'),
                     ),
                     const Spacer(),
@@ -160,15 +254,18 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       case 0:
         return SituationStepView(
           value: _situation,
+          isLoading: _isRefiningSituation,
+          errorText: _situationError,
           onChanged: (SituationDraft next) {
             setState(() {
               _situation = next;
+              _situationError = null;
             });
           },
         );
       case 1:
         return EmotionStepView(
-          situationPrompt: 'llm 생성 상황문장',
+          situationPrompt: _refinedSituationPrompt(),
           value: _emotion,
           onChanged: (EmotionDraft next) {
             setState(() {
@@ -189,7 +286,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       case 3:
         return CognitiveDistortionStepView(
           thoughtPrompt: _automaticThought.selectedThought.trim().isEmpty
-              ? 'llm 생성 자동적 사고 문장'
+              ? '자동적 사고를 먼저 정리해보자.'
               : '네가 고른 자동적 사고는 "${_automaticThought.selectedThought}"야.',
           selectedThought: _automaticThought.selectedThought,
           value: _distortion,
@@ -202,8 +299,8 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       case 4:
         return InterventionStepView(
           distortionPrompt: _distortion.selectedDistortions.isEmpty
-              ? 'llm 생성 인지왜곡 설명'
-              : '지금 보이는 인지왜곡은 ${_distortion.selectedDistortions.join(', ')} 이야.',
+              ? '인지 왜곡을 먼저 골라보자.'
+              : '지금 보이는 인지 왜곡은 ${_distortion.selectedDistortions.join(', ')}이야.',
           value: _intervention,
           onChanged: (InterventionDraft next) {
             setState(() {
@@ -226,7 +323,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
     return ListView(
       children: <Widget>[
         const CharacterBubble(
-          message: '여기까지 정말 잘 왔어. 지금까지 이야기한 내용을 내가 한 번 정리해봤어.',
+          message: '여기까지 잘 왔어. 지금까지 이야기한 내용을 한 번 정리해볼게.',
         ),
         const SizedBox(height: 16),
         Text('요약', style: Theme.of(context).textTheme.headlineSmall),
@@ -234,29 +331,27 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
         _SummaryCard(
           title: '상황',
           content: '원문: ${_fallbackText(_situation.rawSituation)}\n'
-              '보노 응답: LLM 미구현으로 인해 비워둠',
+              '정리: ${_fallbackText(_situation.refinedSituation)}',
         ),
         _SummaryCard(
           title: '감정',
-          content: emotionLines.isEmpty ? '미입력' : emotionLines.join('\n'),
+          content: emotionLines.isEmpty ? '아직 입력되지 않았어요.' : emotionLines.join('\n'),
         ),
         _SummaryCard(
           title: '자동적 사고',
           content: '1차 선택: ${_fallbackText(_automaticThought.starterChoice)}\n'
               '메모: ${_fallbackText(_automaticThought.userNotes)}\n'
-              '최종: ${_fallbackText(_automaticThought.selectedThought)}',
+              '최종 문장: ${_fallbackText(_automaticThought.selectedThought)}',
         ),
         _SummaryCard(
-          title: '인지왜곡',
-          content: '선택: ${_distortion.selectedDistortions.isEmpty ? '미선택' : _distortion.selectedDistortions.join(', ')}\n'
-              '보노 설명: LLM 미구현으로 인해 비워둠\n'
-              '내 이유: ${_fallbackText(_distortion.userReason)}',
+          title: '인지 왜곡',
+          content: '선택: ${_distortion.selectedDistortions.isEmpty ? '아직 선택되지 않았어요.' : _distortion.selectedDistortions.join(', ')}\n'
+              '이유: ${_fallbackText(_distortion.userReason)}',
         ),
         _SummaryCard(
           title: '개입',
-          content: '회복 도구: LLM 미구현으로 인해 비워둠\n'
-              '재구성: ${_fallbackText(_intervention.reframe)}\n'
-              '행동계획: ${_fallbackText(_intervention.actionPlan)}',
+          content: '대안 문장: ${_fallbackText(_intervention.reframe)}\n'
+              '행동 계획: ${_fallbackText(_intervention.actionPlan)}',
         ),
       ],
     );
@@ -264,7 +359,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
   String _emotionSummary() {
     if (_emotion.selectedMajors.isEmpty) {
-      return 'llm 생성 감정 정리 문장';
+      return '지금 느낀 감정을 골라줘.';
     }
 
     final List<String> parts = _emotion.selectedMajors.map((String major) {
