@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'controlled_text_area.dart';
 import 'conversation_widgets.dart';
@@ -40,7 +41,8 @@ class SituationStepView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConversationStepLayout(
-      message: '무슨 상황이 있었는지 편하게 말해줘. 내가 CBT용 상황 문장으로 정리해볼게.',
+      message:
+          '무슨 일이 있었는지 사실 위주로 적어줘. 평가보다 장면과 행동을 적어주면 내가 CBT 상황 문장으로 더 정확하게 정리할게.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -58,14 +60,14 @@ class SituationStepView extends StatelessWidget {
               );
             },
             labelText: '상황 입력',
-            hintText: '예: 회의에서 내 의견을 말했는데 팀장이 바로 다른 안건으로 넘어갔다.',
+            hintText: '예: 회의 중 발표를 했는데 준비한 내용을 몇 군데 빠뜨리고 말이 자주 끊겼어.',
           ),
           if (isLoading) ...<Widget>[
             const SizedBox(height: 12),
             const LinearProgressIndicator(),
             const SizedBox(height: 8),
             Text(
-              '입력한 상황을 CBT 관점의 상황 문장으로 정리하고 있어요.',
+              '입력한 상황을 CBT 관점의 상황 문장으로 정리하고 있어.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],
@@ -80,11 +82,32 @@ class SituationStepView extends StatelessWidget {
           ],
           if (value.refinedSituation.trim().isNotEmpty) ...<Widget>[
             const SizedBox(height: 16),
-            Text(
-              '정리된 상황 문장',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    '정리된 상황 문장',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: value.refinedSituation),
+                    );
+                    if (!context.mounted) {
+                      return;
+                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('정리된 문장을 복사했어.')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy, size: 18),
+                  label: const Text('복사'),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Container(
@@ -95,7 +118,7 @@ class SituationStepView extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFB6DDE5)),
               ),
-              child: Text(value.refinedSituation),
+              child: SelectableText(value.refinedSituation),
             ),
           ],
         ],
