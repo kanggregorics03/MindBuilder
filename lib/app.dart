@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'features/recommend/ui/akinator_style_screen.dart';
+import 'flow/cbt_session.dart';
 
 class MindBuilderApp extends StatelessWidget {
   const MindBuilderApp({super.key});
@@ -14,7 +14,7 @@ class MindBuilderApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF126E82)),
       ),
-      home: const AkinatorStyleScreen(),
+      home: const CbtSessionScreen(),
     );
   }
 }
