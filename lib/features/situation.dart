@@ -4,22 +4,54 @@ import 'package:flutter/services.dart';
 import 'controlled_text_area.dart';
 import 'conversation_widgets.dart';
 
+class SituationRefineResult {
+  const SituationRefineResult({
+    this.original = '',
+    this.feedback = '',
+    this.reframed = '',
+  });
+
+  final String original;
+  final String feedback;
+  final String reframed;
+
+  factory SituationRefineResult.fromJson(Map<String, dynamic> json) {
+    return SituationRefineResult(
+      original: (json['original'] as String? ?? '').trim(),
+      feedback: (json['feedback'] as String? ?? '').trim(),
+      reframed: (json['reframed'] as String? ?? '').trim(),
+    );
+  }
+}
+
 class SituationDraft {
   const SituationDraft({
     this.rawSituation = '',
-    this.refinedSituation = '',
+    this.refineResult = const SituationRefineResult(),
+    this.hasPendingEdits = false,
+    this.originalSituation = '',
+    this.revisedSituation = '',
   });
 
   final String rawSituation;
-  final String refinedSituation;
+  final SituationRefineResult refineResult;
+  final bool hasPendingEdits;
+  final String originalSituation;
+  final String revisedSituation;
 
   SituationDraft copyWith({
     String? rawSituation,
-    String? refinedSituation,
+    SituationRefineResult? refineResult,
+    bool? hasPendingEdits,
+    String? originalSituation,
+    String? revisedSituation,
   }) {
     return SituationDraft(
       rawSituation: rawSituation ?? this.rawSituation,
-      refinedSituation: refinedSituation ?? this.refinedSituation,
+      refineResult: refineResult ?? this.refineResult,
+      hasPendingEdits: hasPendingEdits ?? this.hasPendingEdits,
+      originalSituation: originalSituation ?? this.originalSituation,
+      revisedSituation: revisedSituation ?? this.revisedSituation,
     );
   }
 }
@@ -29,12 +61,14 @@ class SituationStepView extends StatelessWidget {
     super.key,
     required this.value,
     required this.onChanged,
+    required this.onRewriteRequested,
     this.isLoading = false,
     this.errorText,
   });
 
   final SituationDraft value;
   final ValueChanged<SituationDraft> onChanged;
+  final VoidCallback onRewriteRequested;
   final bool isLoading;
   final String? errorText;
 
@@ -55,7 +89,9 @@ class SituationStepView extends StatelessWidget {
               onChanged(
                 value.copyWith(
                   rawSituation: text,
-                  refinedSituation: '',
+                  hasPendingEdits: value.refineResult.reframed
+                      .trim()
+                      .isNotEmpty,
                 ),
               );
             },
@@ -80,8 +116,28 @@ class SituationStepView extends StatelessWidget {
               ),
             ),
           ],
-          if (value.refinedSituation.trim().isNotEmpty) ...<Widget>[
+          if (value.refineResult.reframed.trim().isNotEmpty) ...<Widget>[
             const SizedBox(height: 16),
+            if (value.originalSituation.trim().isNotEmpty) ...<Widget>[
+              _ResultSection(title: '처음 원문', content: value.originalSituation),
+              const SizedBox(height: 12),
+            ],
+            if (value.revisedSituation.trim().isNotEmpty) ...<Widget>[
+              _ResultSection(title: '수정한 문장', content: value.revisedSituation),
+              const SizedBox(height: 12),
+            ],
+            _ResultSection(
+              title: '원래 의미',
+              content: value.refineResult.original,
+            ),
+            if (value.refineResult.feedback.trim().isNotEmpty) ...<Widget>[
+              const SizedBox(height: 12),
+              _ResultSection(
+                title: value.hasPendingEdits ? '이전 피드백' : '피드백',
+                content: value.refineResult.feedback,
+              ),
+            ],
+            const SizedBox(height: 12),
             Row(
               children: <Widget>[
                 Expanded(
@@ -95,7 +151,7 @@ class SituationStepView extends StatelessWidget {
                 TextButton.icon(
                   onPressed: () async {
                     await Clipboard.setData(
-                      ClipboardData(text: value.refinedSituation),
+                      ClipboardData(text: value.refineResult.reframed),
                     );
                     if (!context.mounted) {
                       return;
@@ -110,17 +166,58 @@ class SituationStepView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3FAFC),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFB6DDE5)),
+            _ResultSection(title: null, content: value.refineResult.reframed),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton(
+                onPressed: onRewriteRequested,
+                child: const Text('피드백 반영해서 다시 쓰기'),
               ),
-              child: SelectableText(value.refinedSituation),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value.hasPendingEdits
+                  ? '이전 피드백과 정리 문장을 참고하면서 원문을 수정하고 있어. 준비되면 다시 정리하기를 눌러줘.'
+                  : '입력한 원문은 그대로 남아 있어. 수정한 뒤 다시 정리하기를 눌러줘.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ResultSection extends StatelessWidget {
+  const _ResultSection({required this.title, required this.content});
+
+  final String? title;
+  final String content;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFB6DDE5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (title != null && title!.trim().isNotEmpty) ...<Widget>[
+            Text(
+              title!,
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+          ],
+          SelectableText(content),
         ],
       ),
     );

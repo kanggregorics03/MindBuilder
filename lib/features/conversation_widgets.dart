@@ -39,19 +39,23 @@ class ConversationStepLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final double avatarSize = constraints.maxHeight < 620 ? 92 : 132;
+        final bool isCompactHeight = constraints.maxHeight < 620;
+        final double avatarSize = isCompactHeight ? 72 : 132;
+        final double gapAfterBubble = isCompactHeight ? 12 : 16;
+        final double gapBeforePanel = isCompactHeight ? 8 : 12;
 
         return Column(
           children: <Widget>[
             CharacterBubble(message: message),
-            const SizedBox(height: 16),
+            SizedBox(height: gapAfterBubble),
             Flexible(
-              child: Center(
-                child: CharacterAvatar(size: avatarSize),
-              ),
+              child: Center(child: CharacterAvatar(size: avatarSize)),
             ),
-            const SizedBox(height: 12),
-            InputPanel(child: child),
+            SizedBox(height: gapBeforePanel),
+            Flexible(
+              flex: isCompactHeight ? 5 : 4,
+              child: InputPanel(child: child),
+            ),
           ],
         );
       },
@@ -113,29 +117,21 @@ class InputPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double maxHeight = MediaQuery.of(context).size.height * 0.42;
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: maxHeight),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.95),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          boxShadow: const <BoxShadow>[
-            BoxShadow(
-              color: Color(0x18000000),
-              blurRadius: 20,
-              offset: Offset(0, -6),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(child: child),
-        ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.95),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x18000000),
+            blurRadius: 20,
+            offset: Offset(0, -6),
+          ),
+        ],
       ),
+      child: SafeArea(top: false, child: SingleChildScrollView(child: child)),
     );
   }
 }

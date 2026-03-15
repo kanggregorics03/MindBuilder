@@ -5,5 +5,13 @@ class SituationRefineRequest(BaseModel):
     raw_situation: str = Field(min_length=1, max_length=2000)
 
 
+class SituationRefineResult(BaseModel):
+    original: str
+    feedback: str
+    reframed: str
+
+
 class SituationRefineResponse(BaseModel):
-    refined_situation: str
+    original: str
+    feedback: str
+    reframed: str
