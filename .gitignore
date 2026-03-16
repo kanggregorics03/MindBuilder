@@ -1,51 +1,74 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
+# OS and editor files
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
 .atom/
-.build/
-.buildlog/
 .history
-.svn/
-.swiftpm/
-migrate_working_dir/
-
-# IntelliJ related
+.idea/
 *.iml
 *.ipr
 *.iws
-.idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code workspace settings are usually local to each machine
+.vscode/
 
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# Logs and temporary files
+*.log
+tmp_*
+tmp_negative_docx/
+migrate_working_dir/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local virtual environments
+.venv/
+venv/
+backend/.venv/
+backend/venv/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Flutter / Dart
 .dart_tool/
 .flutter-plugins-dependencies
-.pub-cache/
 .pub/
+.pub-cache/
 /build/
 /coverage/
+**/doc/api/
+**/ios/Flutter/.last_build_id
 
-# Symbolication related
+# Flutter symbol and obfuscation outputs
 app.*.symbols
-
-# Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# Android / Gradle build outputs
 /android/app/debug
 /android/app/profile
 /android/app/release
 
-# Local temporary files for doc parsing/debugging
-tmp_*
-tmp_negative_docx/
-backend/.venv/
-backend/.env
+# Apple / Swift build directories
+.build/
+.buildlog/
+.swiftpm/
+
+# SVN metadata
+.svn/
+
+# Java / Kotlin
+*.class
