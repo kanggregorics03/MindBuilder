@@ -6,18 +6,26 @@ import '../features/conversation_widgets.dart';
 import '../features/emotion.dart';
 import '../features/intervention.dart';
 import '../features/situation.dart';
+import '../services/automatic_thought_service.dart';
 import '../services/situation_service.dart';
 
 class CbtSessionScreen extends StatefulWidget {
-  const CbtSessionScreen({super.key});
+  const CbtSessionScreen({
+    super.key,
+    SituationService? situationService,
+    AutomaticThoughtService? automaticThoughtService,
+  }) : _situationService = situationService ?? const SituationService(),
+       _automaticThoughtService =
+           automaticThoughtService ?? const AutomaticThoughtService();
+
+  final SituationService _situationService;
+  final AutomaticThoughtService _automaticThoughtService;
 
   @override
   State<CbtSessionScreen> createState() => _CbtSessionScreenState();
 }
 
 class _CbtSessionScreenState extends State<CbtSessionScreen> {
-  final SituationService _situationService = const SituationService();
-
   int _stepIndex = 0;
   SituationDraft _situation = const SituationDraft();
   EmotionDraft _emotion = const EmotionDraft();
@@ -25,7 +33,9 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
   CognitiveDistortionDraft _distortion = const CognitiveDistortionDraft();
   InterventionDraft _intervention = const InterventionDraft();
   bool _isRefiningSituation = false;
+  bool _isGeneratingAutomaticThoughts = false;
   String? _situationError;
+  String? _automaticThoughtError;
 
   bool get _isComplete => _stepIndex > 4;
 
@@ -36,11 +46,14 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
     switch (_stepIndex) {
       case 0:
-        return _situation.rawSituation.trim().isNotEmpty && !_isRefiningSituation;
+        return !_isRefiningSituation &&
+            (_situation.refineResult.reframed.trim().isNotEmpty ||
+                _situation.rawSituation.trim().isNotEmpty);
       case 1:
-        return _emotion.isComplete;
+        return _emotion.isComplete && !_isGeneratingAutomaticThoughts;
       case 2:
-        return _automaticThought.selectedThought.trim().isNotEmpty;
+        return !_isGeneratingAutomaticThoughts &&
+            _automaticThought.selectedThoughts.isNotEmpty;
       case 3:
         return _distortion.selectedDistortions.isNotEmpty;
       case 4:
@@ -51,7 +64,16 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
     }
   }
 
-  String get _nextLabel => _stepIndex == 4 ? '요약 보기' : '다음';
+  String get _nextLabel {
+    if (_stepIndex == 0) {
+      return _situation.refineResult.reframed.trim().isNotEmpty &&
+              !_situation.hasPendingEdits
+          ? '이 문장으로 진행'
+          : '정리하기';
+    }
+
+    return _stepIndex == 4 ? '요약 보기' : '다음';
+  }
 
   Future<void> _goNext() async {
     if (!_canProceed) {
@@ -60,6 +82,11 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
     if (_stepIndex == 0) {
       await _refineSituationAndContinue();
+      return;
+    }
+
+    if (_stepIndex == 1) {
+      await _generateAutomaticThoughtsAndContinue(advanceStep: true);
       return;
     }
 
@@ -87,7 +114,9 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       _distortion = const CognitiveDistortionDraft();
       _intervention = const InterventionDraft();
       _isRefiningSituation = false;
+      _isGeneratingAutomaticThoughts = false;
       _situationError = null;
+      _automaticThoughtError = null;
     });
   }
 
@@ -97,7 +126,8 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       return;
     }
 
-    if (_situation.refinedSituation.trim().isNotEmpty) {
+    if (_situation.refineResult.reframed.trim().isNotEmpty &&
+        !_situation.hasPendingEdits) {
       setState(() {
         _stepIndex += 1;
       });
@@ -110,17 +140,31 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
     });
 
     try {
-      final String refinedSituation = await _situationService.refineSituation(
-        rawSituation,
-      );
+      final SituationRefineResult refinedSituation = await widget
+          ._situationService
+          .refineSituation(rawSituation);
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _situation = _situation.copyWith(refinedSituation: refinedSituation);
-        _stepIndex += 1;
+        final String currentInput = rawSituation;
+        final String previousOriginal = _situation.originalSituation.trim();
+        final String originalSituation = previousOriginal.isEmpty
+            ? currentInput
+            : _situation.originalSituation;
+        final String revisedSituation =
+            previousOriginal.isNotEmpty && previousOriginal != currentInput
+            ? currentInput
+            : '';
+
+        _situation = _situation.copyWith(
+          refineResult: refinedSituation,
+          hasPendingEdits: false,
+          originalSituation: originalSituation,
+          revisedSituation: revisedSituation,
+        );
       });
     } on SituationServiceException catch (error) {
       if (!mounted) {
@@ -130,9 +174,9 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       setState(() {
         _situationError = error.message;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (!mounted) {
         return;
@@ -142,17 +186,15 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       setState(() {
         _situationError = message;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text(message)));
     } finally {
-      if (!mounted) {
-        return;
+      if (mounted) {
+        setState(() {
+          _isRefiningSituation = false;
+        });
       }
-
-      setState(() {
-        _isRefiningSituation = false;
-      });
     }
   }
 
@@ -163,8 +205,85 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
     return text;
   }
 
+  Future<void> _generateAutomaticThoughtsAndContinue({
+    required bool advanceStep,
+  }) async {
+    if (_automaticThought.recommendedThoughts.isNotEmpty) {
+      if (advanceStep) {
+        setState(() {
+          _stepIndex += 1;
+        });
+      }
+      return;
+    }
+
+    final String situationPrompt = _refinedSituationPrompt().trim();
+    if (situationPrompt.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _isGeneratingAutomaticThoughts = true;
+      _automaticThoughtError = null;
+    });
+
+    try {
+      final List<String> thoughts = await _automaticThoughtService
+          .generateAutomaticThoughts(situationPrompt);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _automaticThought = _automaticThought.copyWith(
+          recommendedThoughts: thoughts,
+          selectedThoughts: const <String>[],
+          customThoughtDraft: '',
+          editingThoughtIndex: -1,
+          isComposerOpen: false,
+        );
+        if (advanceStep) {
+          _stepIndex += 1;
+        }
+      });
+    } on AutomaticThoughtServiceException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _automaticThoughtError = error.message;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      const String message = '자동적 사고 추천을 불러오는 중에 알 수 없는 오류가 발생했어요.';
+      setState(() {
+        _automaticThoughtError = message;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGeneratingAutomaticThoughts = false;
+        });
+      }
+    }
+  }
+
+  AutomaticThoughtService get _automaticThoughtService =>
+      widget._automaticThoughtService;
+
   String _refinedSituationPrompt() {
-    final String refinedSituation = _situation.refinedSituation.trim();
+    final String refinedSituation = _situation.refineResult.reframed.trim();
     if (refinedSituation.isNotEmpty) {
       return refinedSituation;
     }
@@ -208,7 +327,9 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
-                        Text(_isComplete ? '요약 단계' : '${_stepIndex + 1} / 5 단계'),
+                        Text(
+                          _isComplete ? '요약 단계' : '${_stepIndex + 1} / 5 단계',
+                        ),
                       ],
                     ),
                   ],
@@ -223,7 +344,10 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
                 Row(
                   children: <Widget>[
                     OutlinedButton(
-                      onPressed: _stepIndex == 0 || _isRefiningSituation
+                      onPressed:
+                          _stepIndex == 0 ||
+                              _isRefiningSituation ||
+                              _isGeneratingAutomaticThoughts
                           ? null
                           : _goBack,
                       child: const Text('이전'),
@@ -256,6 +380,12 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
           value: _situation,
           isLoading: _isRefiningSituation,
           errorText: _situationError,
+          onRewriteRequested: () {
+            setState(() {
+              _situation = _situation.copyWith(hasPendingEdits: true);
+              _situationError = null;
+            });
+          },
           onChanged: (SituationDraft next) {
             setState(() {
               _situation = next;
@@ -277,6 +407,11 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
         return AutomaticThoughtStepView(
           emotionPrompt: _emotionSummary(),
           value: _automaticThought,
+          isLoading: _isGeneratingAutomaticThoughts,
+          errorText: _automaticThoughtError,
+          onRetry: () {
+            _generateAutomaticThoughtsAndContinue(advanceStep: false);
+          },
           onChanged: (AutomaticThoughtDraft next) {
             setState(() {
               _automaticThought = next;
@@ -285,10 +420,10 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
         );
       case 3:
         return CognitiveDistortionStepView(
-          thoughtPrompt: _automaticThought.selectedThought.trim().isEmpty
+          thoughtPrompt: _automaticThought.selectedThoughts.isEmpty
               ? '자동적 사고를 먼저 정리해보자.'
-              : '네가 고른 자동적 사고는 "${_automaticThought.selectedThought}"야.',
-          selectedThought: _automaticThought.selectedThought,
+              : '네가 고른 자동적 사고를 같이 살펴보자.',
+          selectedThoughts: _automaticThought.selectedThoughts,
           value: _distortion,
           onChanged: (CognitiveDistortionDraft next) {
             setState(() {
@@ -314,43 +449,59 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
   }
 
   Widget _buildSummary() {
-    final List<String> emotionLines = _emotion.selectedMajors.map((String major) {
+    final List<String> emotionLines = _emotion.selectedMajors.map((
+      String major,
+    ) {
       final Set<String> minors = _emotion.selectedMinors[major] ?? <String>{};
-      final String minorText = minors.isEmpty ? '-' : minors.join(', ');
+      final List<String> labels = <String>[
+        ...minors.where((String minor) => minor != '직접 입력'),
+      ];
+      if (major == '기타 감정' && _emotion.customEmotion.trim().isNotEmpty) {
+        labels.add('직접 입력(${_emotion.customEmotion.trim()})');
+      } else if (minors.contains('직접 입력')) {
+        labels.add('직접 입력');
+      }
+      final String minorText = labels.isEmpty ? '-' : labels.join(', ');
       return '$major: $minorText';
     }).toList();
 
     return ListView(
       children: <Widget>[
-        const CharacterBubble(
-          message: '여기까지 잘 왔어. 지금까지 이야기한 내용을 한 번 정리해볼게.',
-        ),
+        const CharacterBubble(message: '여기까지 잘 왔어. 지금까지 이야기한 내용을 한 번 정리해볼게.'),
         const SizedBox(height: 16),
         Text('요약', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 16),
         _SummaryCard(
           title: '상황',
-          content: '원문: ${_fallbackText(_situation.rawSituation)}\n'
-              '정리: ${_fallbackText(_situation.refinedSituation)}',
+          content:
+              '처음 원문: ${_fallbackText(_situation.originalSituation)}\n'
+              '수정한 문장: ${_fallbackText(_situation.revisedSituation)}\n'
+              '의미: ${_fallbackText(_situation.refineResult.original)}\n'
+              '피드백: ${_fallbackText(_situation.refineResult.feedback)}\n'
+              '정리: ${_fallbackText(_situation.refineResult.reframed)}',
         ),
         _SummaryCard(
           title: '감정',
-          content: emotionLines.isEmpty ? '아직 입력되지 않았어요.' : emotionLines.join('\n'),
+          content: emotionLines.isEmpty
+              ? '아직 입력되지 않았어요.'
+              : emotionLines.join('\n'),
         ),
         _SummaryCard(
           title: '자동적 사고',
-          content: '1차 선택: ${_fallbackText(_automaticThought.starterChoice)}\n'
-              '메모: ${_fallbackText(_automaticThought.userNotes)}\n'
-              '최종 문장: ${_fallbackText(_automaticThought.selectedThought)}',
+          content:
+              '추천 개수: ${_automaticThought.recommendedThoughts.length}\n'
+              '선택 문장들: ${_automaticThought.selectedThoughts.isEmpty ? '아직 입력되지 않았어요.' : _automaticThought.selectedThoughts.join(' / ')}',
         ),
         _SummaryCard(
           title: '인지 왜곡',
-          content: '선택: ${_distortion.selectedDistortions.isEmpty ? '아직 선택되지 않았어요.' : _distortion.selectedDistortions.join(', ')}\n'
+          content:
+              '선택: ${_distortion.selectedDistortions.isEmpty ? '아직 선택되지 않았어요.' : _distortion.selectedDistortions.join(', ')}\n'
               '이유: ${_fallbackText(_distortion.userReason)}',
         ),
         _SummaryCard(
           title: '개입',
-          content: '대안 문장: ${_fallbackText(_intervention.reframe)}\n'
+          content:
+              '대안 문장: ${_fallbackText(_intervention.reframe)}\n'
               '행동 계획: ${_fallbackText(_intervention.actionPlan)}',
         ),
       ],
@@ -364,10 +515,19 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
     final List<String> parts = _emotion.selectedMajors.map((String major) {
       final Set<String> minors = _emotion.selectedMinors[major] ?? <String>{};
-      if (minors.isEmpty) {
+      final List<String> labels = <String>[
+        ...minors.where((String minor) => minor != '직접 입력'),
+      ];
+      if (major == '기타 감정' && _emotion.customEmotion.trim().isNotEmpty) {
+        labels.add('직접 입력(${_emotion.customEmotion.trim()})');
+      } else if (minors.contains('직접 입력')) {
+        labels.add('직접 입력');
+      }
+
+      if (labels.isEmpty) {
         return major;
       }
-      return '$major(${minors.join(', ')})';
+      return '$major(${labels.join(', ')})';
     }).toList();
 
     return '좋아. ${parts.join(', ')} 같은 감정이 느껴졌구나.';
@@ -375,10 +535,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({
-    required this.title,
-    required this.content,
-  });
+  const _SummaryCard({required this.title, required this.content});
 
   final String title;
   final String content;
