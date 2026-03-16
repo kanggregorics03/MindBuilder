@@ -15,7 +15,7 @@ Each step collects user input and passes the result into the next step.
 ## Situation LLM Flow
 
 The situation step sends the user's raw sentence to a separate Python backend.
-The backend asks OpenAI to rewrite it as a cleaner CBT-style situation statement.
+The backend asks Groq to rewrite it as a cleaner CBT-style situation statement.
 That refined sentence is then used as the prompt for the emotion step.
 
 ## Backend setup
@@ -23,7 +23,7 @@ That refined sentence is then used as the prompt for the emotion step.
 1. Create a virtual environment inside `backend/`.
 2. Install dependencies from `backend/requirements.txt`.
 3. Copy `backend/.env.example` to `backend/.env`.
-4. Fill in `OPENAI_API_KEY`.
+4. Fill in `GROQ_API_KEY`.
 5. Run `uvicorn app.main:app --reload` from `backend/`.
 
 ## Flutter setup

@@ -50,18 +50,18 @@ class CognitiveDistortionStepView extends StatelessWidget {
   const CognitiveDistortionStepView({
     super.key,
     required this.thoughtPrompt,
-    required this.selectedThought,
+    required this.selectedThoughts,
     required this.value,
     required this.onChanged,
   });
 
   final String thoughtPrompt;
-  final String selectedThought;
+  final List<String> selectedThoughts;
   final CognitiveDistortionDraft value;
   final ValueChanged<CognitiveDistortionDraft> onChanged;
 
   List<String> _suggestions() {
-    final String lower = selectedThought.toLowerCase();
+    final String lower = selectedThoughts.join(' ').toLowerCase();
     final List<String> suggestions = <String>[];
 
     if (lower.contains('항상') || lower.contains('계속') || lower.contains('원래')) {
@@ -81,9 +81,7 @@ class CognitiveDistortionStepView extends StatelessWidget {
     }
 
     if (suggestions.isEmpty) {
-      suggestions.addAll(
-        <String>['과잉일반화', '독심술', '감정적 추론'],
-      );
+      suggestions.addAll(<String>['과잉일반화', '독심술', '감정적 추론']);
     }
 
     return suggestions.take(3).toList();
@@ -93,9 +91,9 @@ class CognitiveDistortionStepView extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<String> suggestions = _suggestions();
     final String intro = thoughtPrompt.trim().isEmpty ? '' : '$thoughtPrompt\n';
-    final String message = selectedThought.trim().isEmpty
-        ? '${intro}이제 네 생각에 어떤 인지왜곡이 섞여 있는지 같이 볼게.'
-        : '${intro}네가 고른 생각은 "$selectedThought" 였어. 어떤 인지왜곡이 가까운지 골라보자.';
+    final String message = selectedThoughts.isEmpty
+        ? '$intro이제 네 생각에 어떤 인지왜곡이 섞여 있는지 같이 볼게.'
+        : '$intro네가 고른 생각들을 하나씩 보면서 어떤 인지왜곡이 가까운지 골라보자.';
 
     return ConversationStepLayout(
       message: message,
@@ -105,16 +103,41 @@ class CognitiveDistortionStepView extends StatelessWidget {
         children: <Widget>[
           Text(
             '인지왜곡 선택',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
+          if (selectedThoughts.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            Text(
+              '선택한 자동적 사고들',
+              style: Theme.of(
+                context,
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            ...selectedThoughts.map(
+              (String thought) => Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F8FB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD8DDE8)),
+                ),
+                child: Text(thought),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: kDistortionOptions.map((String distortion) {
-              final bool selected = value.selectedDistortions.contains(distortion);
+              final bool selected = value.selectedDistortions.contains(
+                distortion,
+              );
               final bool suggested = suggestions.contains(distortion);
               return FilterChip(
                 label: Text(suggested ? '$distortion 추천' : distortion),
