@@ -4,16 +4,18 @@ import 'controlled_text_area.dart';
 import 'conversation_widgets.dart';
 
 const List<String> kDistortionOptions = <String>[
-  '흑백논리',
-  '과잉일반화',
+  '전부 아니면 전무라는 생각',
+  '지나친 일반화',
   '정신적 여과',
-  '긍정 축소',
-  '독심술',
-  '재앙화',
-  '당위 진술',
-  '개인화',
-  '감정적 추론',
+  '긍정적인 면 무시하기',
+  '성급한 결론 짓기 - 독심술',
+  '성급한 결론 짓기 - 예언자적 말하기',
+  '극대화와 극소화',
+  '감정적 추리',
+  '해야 한다는 생각',
   '낙인찍기',
+  '비난하기 - 자기 비난',
+  '비난하기 - 타인 비난',
 ];
 
 class CognitiveDistortionDraft {
@@ -65,23 +67,27 @@ class CognitiveDistortionStepView extends StatelessWidget {
     final List<String> suggestions = <String>[];
 
     if (lower.contains('항상') || lower.contains('계속') || lower.contains('원래')) {
-      suggestions.add('과잉일반화');
+      suggestions.add('지나친 일반화');
     }
     if (lower.contains('끝') || lower.contains('망') || lower.contains('더 나빠')) {
-      suggestions.add('재앙화');
+      suggestions.add('성급한 결론 짓기 - 예언자적 말하기');
+      suggestions.add('극대화와 극소화');
     }
     if (lower.contains('분명') || lower.contains('무시') || lower.contains('별로')) {
-      suggestions.add('독심술');
+      suggestions.add('성급한 결론 짓기 - 독심술');
+      suggestions.add('긍정적인 면 무시하기');
     }
     if (lower.contains('내 책임') || lower.contains('내가 문제')) {
-      suggestions.add('개인화');
+      suggestions.add('비난하기 - 자기 비난');
     }
     if (lower.contains('느꼈') || lower.contains('불안') || lower.contains('무서')) {
-      suggestions.add('감정적 추론');
+      suggestions.add('감정적 추리');
     }
 
     if (suggestions.isEmpty) {
-      suggestions.addAll(<String>['과잉일반화', '독심술', '감정적 추론']);
+      suggestions.addAll(
+        <String>['지나친 일반화', '성급한 결론 짓기 - 독심술', '감정적 추리'],
+      );
     }
 
     return suggestions.take(3).toList();
