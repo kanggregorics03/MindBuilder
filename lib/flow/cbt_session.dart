@@ -57,7 +57,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       case 3:
         return _distortion.selectedDistortions.isNotEmpty;
       case 4:
-        return _therapyTools.isComplete;
+        return _canProceedTherapyTools;
       default:
         return false;
     }
@@ -71,20 +71,50 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
           : '정리하기';
     }
 
+    if (_stepIndex == 4) {
+      switch (_therapyTools.positiveReframingStage) {
+        case PositiveReframingStage.intro:
+          return '시작하기';
+        case PositiveReframingStage.benefitQuestion:
+          return '다음';
+        case PositiveReframingStage.valueQuestion:
+          return _therapyTools.currentPositiveReframingIndex ==
+                  _therapyTools.positiveReframingEntries.length - 1
+              ? '저장하고 마치기'
+              : '저장하고 다음 생각으로';
+        case PositiveReframingStage.done:
+          return '요약 보기';
+      }
+    }
+
     return _stepIndex == 4 ? '요약 보기' : '다음';
   }
 
-  bool get _showBottomNextButton {
-    if (_isComplete) {
-      return false;
+  bool get _canProceedTherapyTools {
+    switch (_therapyTools.positiveReframingStage) {
+      case PositiveReframingStage.intro:
+        return true;
+      case PositiveReframingStage.benefitQuestion:
+        if (_therapyTools.positiveReframingEntries.isEmpty) {
+          return false;
+        }
+        return _therapyTools
+            .positiveReframingEntries[_therapyTools.currentPositiveReframingIndex]
+            .benefitAnswer
+            .trim()
+            .isNotEmpty;
+      case PositiveReframingStage.valueQuestion:
+        if (_therapyTools.positiveReframingEntries.isEmpty) {
+          return false;
+        }
+        return _therapyTools
+            .positiveReframingEntries[_therapyTools.currentPositiveReframingIndex]
+            .valueAnswer
+            .trim()
+            .isNotEmpty;
+      case PositiveReframingStage.done:
+        return true;
     }
-
-    if (_stepIndex == 4 &&
-        _therapyTools.positiveReframingStage == PositiveReframingStage.intro) {
-      return false;
-    }
-
-    return true;
   }
 
   Future<void> _goNext() async {
@@ -104,6 +134,11 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
     if (_stepIndex == 3) {
       _prepareTherapyToolsAndContinue();
+      return;
+    }
+
+    if (_stepIndex == 4) {
+      _advanceTherapyTools();
       return;
     }
 
@@ -313,6 +348,27 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
     });
   }
 
+  void _advanceTherapyTools() {
+    switch (_therapyTools.positiveReframingStage) {
+      case PositiveReframingStage.intro:
+      case PositiveReframingStage.benefitQuestion:
+        setState(() {
+          _therapyTools = _therapyTools.nextPositiveReframingStage();
+        });
+        return;
+      case PositiveReframingStage.valueQuestion:
+        setState(() {
+          _therapyTools = _therapyTools.saveCurrentPositiveReframingEntry();
+        });
+        return;
+      case PositiveReframingStage.done:
+        setState(() {
+          _stepIndex += 1;
+        });
+        return;
+    }
+  }
+
   String _refinedSituationPrompt() {
     final String refinedSituation = _situation.refineResult.reframed.trim();
     if (refinedSituation.isNotEmpty) {
@@ -389,13 +445,11 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
                         onPressed: _restart,
                         child: const Text('처음부터 다시'),
                       )
-                    else if (_showBottomNextButton)
+                    else
                       ElevatedButton(
                         onPressed: _canProceed ? _goNext : null,
                         child: Text(_nextLabel),
                       )
-                    else
-                      const SizedBox.shrink(),
                   ],
                 ),
               ],
