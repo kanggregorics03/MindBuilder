@@ -328,9 +328,6 @@ class TherapyToolsStepView extends StatelessWidget {
             _TherapyToolsIntroPanel(
               selectedDistortions: selectedDistortions,
               schedule: value.schedule,
-              onStart: () {
-                onChanged(value.nextPositiveReframingStage());
-              },
             )
           else if (value.schedule.first.toolId == kPositiveReframingToolId)
             PositiveReframingToolView(
@@ -341,12 +338,6 @@ class TherapyToolsStepView extends StatelessWidget {
               },
               onValueChanged: (String text) {
                 onChanged(value.updatePositiveReframingValue(text));
-              },
-              onNextStage: () {
-                onChanged(value.nextPositiveReframingStage());
-              },
-              onSaveCurrent: () {
-                onChanged(value.saveCurrentPositiveReframingEntry());
               },
             ),
         ],
@@ -391,16 +382,12 @@ class PositiveReframingToolView extends StatelessWidget {
     required this.entries,
     required this.onBenefitChanged,
     required this.onValueChanged,
-    required this.onNextStage,
-    required this.onSaveCurrent,
   });
 
   final PositiveReframingStage stage;
   final List<PositiveReframingEntry> entries;
   final ValueChanged<String> onBenefitChanged;
   final ValueChanged<String> onValueChanged;
-  final VoidCallback onNextStage;
-  final VoidCallback onSaveCurrent;
 
   @override
   Widget build(BuildContext context) {
@@ -465,16 +452,6 @@ class PositiveReframingToolView extends StatelessWidget {
             minLines: 3,
             maxLines: 5,
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: ElevatedButton(
-              onPressed: activeEntry.benefitAnswer.trim().isEmpty
-                  ? null
-                  : onNextStage,
-              child: const Text('다음 질문으로'),
-            ),
-          ),
         ];
       case PositiveReframingStage.valueQuestion:
         return <Widget>[
@@ -492,20 +469,6 @@ class PositiveReframingToolView extends StatelessWidget {
             hintText: '예: 인정받고 싶어하는 마음, 책임감, 관계를 소중히 여기는 태도, 성실함',
             minLines: 3,
             maxLines: 5,
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: ElevatedButton(
-              onPressed: activeEntry.valueAnswer.trim().isEmpty
-                  ? null
-                  : onSaveCurrent,
-              child: Text(
-                activeIndex == entries.length - 1
-                    ? '이 답 저장하고 마치기'
-                    : '이 답 저장하고 다음 생각으로',
-              ),
-            ),
           ),
         ];
       case PositiveReframingStage.done:
@@ -525,12 +488,10 @@ class _TherapyToolsIntroPanel extends StatelessWidget {
   const _TherapyToolsIntroPanel({
     required this.selectedDistortions,
     required this.schedule,
-    required this.onStart,
   });
 
   final Set<String> selectedDistortions;
   final List<TherapyToolScheduleItem> schedule;
-  final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) {
@@ -567,14 +528,6 @@ class _TherapyToolsIntroPanel extends StatelessWidget {
               child: Text('${item.key + 1}. ${item.value.toolTitle}'),
             );
           }),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onStart,
-              child: const Text('좋아, 시작하자'),
-            ),
-          ),
         ],
       ),
     );
