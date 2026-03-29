@@ -4,8 +4,8 @@ import '../features/automatic_thought.dart';
 import '../features/cognitive_distortion.dart';
 import '../features/conversation_widgets.dart';
 import '../features/emotion.dart';
-import '../features/intervention.dart';
 import '../features/situation.dart';
+import '../features/therapy_tools.dart';
 import '../services/automatic_thought_service.dart';
 import '../services/situation_service.dart';
 
@@ -31,7 +31,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
   EmotionDraft _emotion = const EmotionDraft();
   AutomaticThoughtDraft _automaticThought = const AutomaticThoughtDraft();
   CognitiveDistortionDraft _distortion = const CognitiveDistortionDraft();
-  InterventionDraft _intervention = const InterventionDraft();
+  TherapyToolDraft _therapyTools = const TherapyToolDraft();
   bool _isRefiningSituation = false;
   bool _isGeneratingAutomaticThoughts = false;
   String? _situationError;
@@ -57,8 +57,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       case 3:
         return _distortion.selectedDistortions.isNotEmpty;
       case 4:
-        return _intervention.reframe.trim().isNotEmpty ||
-            _intervention.actionPlan.trim().isNotEmpty;
+        return _canProceedTherapyTools;
       default:
         return false;
     }
@@ -72,7 +71,50 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
           : '정리하기';
     }
 
+    if (_stepIndex == 4) {
+      switch (_therapyTools.positiveReframingStage) {
+        case PositiveReframingStage.intro:
+          return '시작하기';
+        case PositiveReframingStage.benefitQuestion:
+          return '다음';
+        case PositiveReframingStage.valueQuestion:
+          return _therapyTools.currentPositiveReframingIndex ==
+                  _therapyTools.positiveReframingEntries.length - 1
+              ? '저장하고 마치기'
+              : '저장하고 다음 생각으로';
+        case PositiveReframingStage.done:
+          return '요약 보기';
+      }
+    }
+
     return _stepIndex == 4 ? '요약 보기' : '다음';
+  }
+
+  bool get _canProceedTherapyTools {
+    switch (_therapyTools.positiveReframingStage) {
+      case PositiveReframingStage.intro:
+        return true;
+      case PositiveReframingStage.benefitQuestion:
+        if (_therapyTools.positiveReframingEntries.isEmpty) {
+          return false;
+        }
+        return _therapyTools
+            .positiveReframingEntries[_therapyTools.currentPositiveReframingIndex]
+            .benefitAnswer
+            .trim()
+            .isNotEmpty;
+      case PositiveReframingStage.valueQuestion:
+        if (_therapyTools.positiveReframingEntries.isEmpty) {
+          return false;
+        }
+        return _therapyTools
+            .positiveReframingEntries[_therapyTools.currentPositiveReframingIndex]
+            .valueAnswer
+            .trim()
+            .isNotEmpty;
+      case PositiveReframingStage.done:
+        return true;
+    }
   }
 
   Future<void> _goNext() async {
@@ -87,6 +129,16 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
     if (_stepIndex == 1) {
       await _generateAutomaticThoughtsAndContinue(advanceStep: true);
+      return;
+    }
+
+    if (_stepIndex == 3) {
+      _prepareTherapyToolsAndContinue();
+      return;
+    }
+
+    if (_stepIndex == 4) {
+      _advanceTherapyTools();
       return;
     }
 
@@ -112,7 +164,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
       _emotion = const EmotionDraft();
       _automaticThought = const AutomaticThoughtDraft();
       _distortion = const CognitiveDistortionDraft();
-      _intervention = const InterventionDraft();
+      _therapyTools = const TherapyToolDraft();
       _isRefiningSituation = false;
       _isGeneratingAutomaticThoughts = false;
       _situationError = null;
@@ -282,6 +334,41 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
   AutomaticThoughtService get _automaticThoughtService =>
       widget._automaticThoughtService;
 
+  void _prepareTherapyToolsAndContinue() {
+    final TherapyToolDraft nextDraft = buildTherapyToolDraft(
+      selectedDistortions: _distortion.selectedDistortions,
+      selectedThoughts: _automaticThought.selectedThoughts,
+    );
+
+    setState(() {
+      if (_therapyTools.sourceSignature != nextDraft.sourceSignature) {
+        _therapyTools = nextDraft;
+      }
+      _stepIndex += 1;
+    });
+  }
+
+  void _advanceTherapyTools() {
+    switch (_therapyTools.positiveReframingStage) {
+      case PositiveReframingStage.intro:
+      case PositiveReframingStage.benefitQuestion:
+        setState(() {
+          _therapyTools = _therapyTools.nextPositiveReframingStage();
+        });
+        return;
+      case PositiveReframingStage.valueQuestion:
+        setState(() {
+          _therapyTools = _therapyTools.saveCurrentPositiveReframingEntry();
+        });
+        return;
+      case PositiveReframingStage.done:
+        setState(() {
+          _stepIndex += 1;
+        });
+        return;
+    }
+  }
+
   String _refinedSituationPrompt() {
     final String refinedSituation = _situation.refineResult.reframed.trim();
     if (refinedSituation.isNotEmpty) {
@@ -362,7 +449,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
                       ElevatedButton(
                         onPressed: _canProceed ? _goNext : null,
                         child: Text(_nextLabel),
-                      ),
+                      )
                   ],
                 ),
               ],
@@ -432,14 +519,13 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
           },
         );
       case 4:
-        return InterventionStepView(
-          distortionPrompt: _distortion.selectedDistortions.isEmpty
-              ? '인지 왜곡을 먼저 골라보자.'
-              : '지금 보이는 인지 왜곡은 ${_distortion.selectedDistortions.join(', ')}이야.',
-          value: _intervention,
-          onChanged: (InterventionDraft next) {
+        return TherapyToolsStepView(
+          selectedDistortions: _distortion.selectedDistortions,
+          selectedThoughts: _automaticThought.selectedThoughts,
+          value: _therapyTools,
+          onChanged: (TherapyToolDraft next) {
             setState(() {
-              _intervention = next;
+              _therapyTools = next;
             });
           },
         );
@@ -499,10 +585,19 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
               '이유: ${_fallbackText(_distortion.userReason)}',
         ),
         _SummaryCard(
-          title: '개입',
-          content:
-              '대안 문장: ${_fallbackText(_intervention.reframe)}\n'
-              '행동 계획: ${_fallbackText(_intervention.actionPlan)}',
+          title: '치료 도구',
+          content: _therapyTools.positiveReframingEntries.isEmpty
+              ? '아직 진행한 치료 도구가 없어요.'
+              : _therapyTools.positiveReframingEntries
+                    .asMap()
+                    .entries
+                    .map(
+                      (MapEntry<int, PositiveReframingEntry> entry) =>
+                          '${entry.key + 1}. 생각: ${entry.value.thought}\n'
+                          '보호 기능: ${_fallbackText(entry.value.benefitAnswer)}\n'
+                          '가치와 바람: ${_fallbackText(entry.value.valueAnswer)}',
+                    )
+                    .join('\n\n'),
         ),
       ],
     );
