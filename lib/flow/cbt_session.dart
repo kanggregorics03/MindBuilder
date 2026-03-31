@@ -47,8 +47,9 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
     switch (_stepIndex) {
       case 0:
         return !_isRefiningSituation &&
-            (_situation.refineResult.reframed.trim().isNotEmpty ||
-                _situation.rawSituation.trim().isNotEmpty);
+            (_situation.refineResult.reframed.trim().isEmpty
+                ? _situation.rawSituation.trim().isNotEmpty
+                : _situation.progressChoice != SituationProgressChoice.none);
       case 1:
         return _emotion.isComplete && !_isGeneratingAutomaticThoughts;
       case 2:
@@ -65,10 +66,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
   String get _nextLabel {
     if (_stepIndex == 0) {
-      return _situation.refineResult.reframed.trim().isNotEmpty &&
-              !_situation.hasPendingEdits
-          ? '이 문장으로 진행'
-          : '정리하기';
+      return '정리하기';
     }
 
     if (_stepIndex == 4) {
@@ -147,6 +145,21 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
     });
   }
 
+  void _resetAfterSituationChange() {
+    _automaticThought = const AutomaticThoughtDraft();
+    _distortion = const CognitiveDistortionDraft();
+    _therapyTools = const TherapyToolDraft();
+    _automaticThoughtError = null;
+  }
+
+  void _selectSituationAndContinue(SituationProgressChoice choice) {
+    setState(() {
+      _situation = _situation.copyWith(progressChoice: choice);
+      _resetAfterSituationChange();
+      _stepIndex = 1;
+    });
+  }
+
   void _goBack() {
     if (_stepIndex == 0) {
       return;
@@ -180,9 +193,6 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
     if (_situation.refineResult.reframed.trim().isNotEmpty &&
         !_situation.hasPendingEdits) {
-      setState(() {
-        _stepIndex += 1;
-      });
       return;
     }
 
@@ -216,7 +226,9 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
           hasPendingEdits: false,
           originalSituation: originalSituation,
           revisedSituation: revisedSituation,
+          progressChoice: SituationProgressChoice.none,
         );
+        _resetAfterSituationChange();
       });
     } on SituationServiceException catch (error) {
       if (!mounted) {
@@ -281,7 +293,11 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
 
     try {
       final List<String> thoughts = await _automaticThoughtService
-          .generateAutomaticThoughts(situationPrompt);
+          .generateAutomaticThoughts(
+            situation: situationPrompt,
+            originalSituation: _originalSituationPrompt(),
+            emotions: _selectedEmotionLabels(),
+          );
 
       if (!mounted) {
         return;
@@ -370,9 +386,15 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
   }
 
   String _refinedSituationPrompt() {
-    final String refinedSituation = _situation.refineResult.reframed.trim();
-    if (refinedSituation.isNotEmpty) {
-      return refinedSituation;
+    if (_situation.progressChoice == SituationProgressChoice.original) {
+      return _originalSituationPrompt();
+    }
+
+    if (_situation.progressChoice == SituationProgressChoice.reframed) {
+      final String refinedSituation = _situation.refineResult.reframed.trim();
+      if (refinedSituation.isNotEmpty) {
+        return refinedSituation;
+      }
     }
 
     final String rawSituation = _situation.rawSituation.trim();
@@ -381,6 +403,90 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
     }
 
     return '상황 문장을 먼저 입력해줘.';
+  }
+
+  String _originalSituationPrompt() {
+    final String originalSituation = _situation.originalSituation.trim();
+    if (originalSituation.isNotEmpty) {
+      return originalSituation;
+    }
+
+    return _situation.rawSituation.trim();
+  }
+
+  String _selectedSituationLabel() {
+    switch (_situation.progressChoice) {
+      case SituationProgressChoice.original:
+        return '처음 문장';
+      case SituationProgressChoice.reframed:
+        return '다듬은 문장';
+      case SituationProgressChoice.none:
+        return '아직 선택되지 않았어요.';
+    }
+  }
+
+  List<String> _selectedEmotionLabels() {
+    return _emotion.selectedMajors.map((String major) {
+      final Set<String> minors = _emotion.selectedMinors[major] ?? <String>{};
+      final List<String> labels = <String>[
+        ...minors.where((String minor) => minor != '직접 입력'),
+      ];
+      if (major == '기타 감정' && _emotion.customEmotion.trim().isNotEmpty) {
+        labels.add(_emotion.customEmotion.trim());
+      } else if (minors.contains('직접 입력')) {
+        labels.add('직접 입력');
+      }
+
+      if (labels.isEmpty) {
+        return major;
+      }
+      return '$major(${labels.join(', ')})';
+    }).toList();
+  }
+
+  bool get _showsSituationFooterActions =>
+      _stepIndex == 0 &&
+      _situation.refineResult.reframed.trim().isNotEmpty &&
+      !_situation.hasPendingEdits;
+
+  Widget _buildFooterActions() {
+    if (_isComplete) {
+      return ElevatedButton(
+        onPressed: _restart,
+        child: const Text('처음부터 다시'),
+      );
+    }
+
+    if (_showsSituationFooterActions) {
+      return Expanded(
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () {
+                  _selectSituationAndContinue(SituationProgressChoice.original);
+                },
+                child: const Text('처음 문장으로 진행'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () {
+                  _selectSituationAndContinue(SituationProgressChoice.reframed);
+                },
+                child: const Text('다듬은 문장으로 진행'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ElevatedButton(
+      onPressed: _canProceed ? _goNext : null,
+      child: Text(_nextLabel),
+    );
   }
 
   @override
@@ -440,16 +546,7 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
                       child: const Text('이전'),
                     ),
                     const Spacer(),
-                    if (_isComplete)
-                      ElevatedButton(
-                        onPressed: _restart,
-                        child: const Text('처음부터 다시'),
-                      )
-                    else
-                      ElevatedButton(
-                        onPressed: _canProceed ? _goNext : null,
-                        child: Text(_nextLabel),
-                      )
+                    _buildFooterActions(),
                   ],
                 ),
               ],
@@ -469,13 +566,25 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
           errorText: _situationError,
           onRewriteRequested: () {
             setState(() {
-              _situation = _situation.copyWith(hasPendingEdits: true);
+              _situation = _situation.copyWith(
+                hasPendingEdits: true,
+                progressChoice: SituationProgressChoice.none,
+              );
+              _resetAfterSituationChange();
               _situationError = null;
             });
           },
           onChanged: (SituationDraft next) {
             setState(() {
-              _situation = next;
+              final bool textChanged =
+                  _situation.rawSituation != next.rawSituation ||
+                  _situation.revisedSituation != next.revisedSituation;
+              _situation = textChanged
+                  ? next.copyWith(progressChoice: SituationProgressChoice.none)
+                  : next;
+              if (textChanged) {
+                _resetAfterSituationChange();
+              }
               _situationError = null;
             });
           },
@@ -564,7 +673,9 @@ class _CbtSessionScreenState extends State<CbtSessionScreen> {
               '수정한 문장: ${_fallbackText(_situation.revisedSituation)}\n'
               '의미: ${_fallbackText(_situation.refineResult.original)}\n'
               '피드백: ${_fallbackText(_situation.refineResult.feedback)}\n'
-              '정리: ${_fallbackText(_situation.refineResult.reframed)}',
+              '다듬은 문장: ${_fallbackText(_situation.refineResult.reframed)}\n'
+              '진행 기준: ${_selectedSituationLabel()}\n'
+              '실제로 진행한 문장: ${_fallbackText(_refinedSituationPrompt())}',
         ),
         _SummaryCard(
           title: '감정',

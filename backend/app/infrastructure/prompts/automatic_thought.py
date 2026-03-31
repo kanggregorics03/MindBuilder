@@ -23,11 +23,16 @@ def build_automatic_thought_system_prompt() -> str:
 Task:
 Generate 4 to 8 possible automatic thoughts the user may have had.
 
+Input format:
+- The input may include labeled sections such as refined situation, original situation, and selected emotions.
+- Use all provided context when it helps infer likely automatic thoughts.
+
 Rules:
 - Each thought must be meaningfully different.
 - Do not repeat the same idea with different wording.
 - Keep only thoughts that naturally fit the user statement and situation.
 - Do not overinterpret or jump too far beyond the situation.
+- Treat emotion labels as supporting context, not as a replacement for the situation itself.
 - Use short, natural, first-person inner-monologue sentences.
 - One sentence = one interpretation only.
 - Prefer thoughts that show interpretation, assumption, conclusion, or prediction rather than emotion alone.

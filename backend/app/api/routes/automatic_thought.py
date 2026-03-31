@@ -27,7 +27,11 @@ def generate_automatic_thoughts_endpoint(
     use_case = get_generate_automatic_thoughts_use_case()
 
     try:
-        thoughts = use_case.execute(payload.situation)
+        thoughts = use_case.execute(
+            situation=payload.situation,
+            original_situation=payload.original_situation,
+            emotions=payload.emotions,
+        )
     except ValueError as exc:
         logger.exception("Automatic thought generation received invalid input.")
         raise HTTPException(status_code=400, detail=str(exc)) from exc

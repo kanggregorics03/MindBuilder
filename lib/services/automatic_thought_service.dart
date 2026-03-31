@@ -18,7 +18,11 @@ class AutomaticThoughtService {
 
   final http.Client? _client;
 
-  Future<List<String>> generateAutomaticThoughts(String situation) async {
+  Future<List<String>> generateAutomaticThoughts({
+    required String situation,
+    String originalSituation = '',
+    List<String> emotions = const <String>[],
+  }) async {
     final http.Client client = _client ?? http.Client();
     final bool shouldClose = _client == null;
 
@@ -29,7 +33,11 @@ class AutomaticThoughtService {
       final http.Response response = await client.post(
         uri,
         headers: <String, String>{'Content-Type': 'application/json'},
-        body: jsonEncode(<String, String>{'situation': situation}),
+        body: jsonEncode(<String, dynamic>{
+          'situation': situation,
+          'original_situation': originalSituation,
+          'emotions': emotions,
+        }),
       );
 
       if (response.statusCode != 200) {

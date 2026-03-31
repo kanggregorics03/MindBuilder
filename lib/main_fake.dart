@@ -26,7 +26,11 @@ class FakeAutomaticThoughtService extends AutomaticThoughtService {
   const FakeAutomaticThoughtService();
 
   @override
-  Future<List<String>> generateAutomaticThoughts(String situation) async {
+  Future<List<String>> generateAutomaticThoughts({
+    required String situation,
+    String originalSituation = '',
+    List<String> emotions = const <String>[],
+  }) async {
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
     return const <String>[

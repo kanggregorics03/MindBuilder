@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'controlled_text_area.dart';
 import 'conversation_widgets.dart';
+
+enum SituationProgressChoice { none, original, reframed }
 
 class SituationRefineResult {
   const SituationRefineResult({
@@ -31,6 +32,7 @@ class SituationDraft {
     this.hasPendingEdits = false,
     this.originalSituation = '',
     this.revisedSituation = '',
+    this.progressChoice = SituationProgressChoice.none,
   });
 
   final String rawSituation;
@@ -38,6 +40,7 @@ class SituationDraft {
   final bool hasPendingEdits;
   final String originalSituation;
   final String revisedSituation;
+  final SituationProgressChoice progressChoice;
 
   SituationDraft copyWith({
     String? rawSituation,
@@ -45,6 +48,7 @@ class SituationDraft {
     bool? hasPendingEdits,
     String? originalSituation,
     String? revisedSituation,
+    SituationProgressChoice? progressChoice,
   }) {
     return SituationDraft(
       rawSituation: rawSituation ?? this.rawSituation,
@@ -52,6 +56,7 @@ class SituationDraft {
       hasPendingEdits: hasPendingEdits ?? this.hasPendingEdits,
       originalSituation: originalSituation ?? this.originalSituation,
       revisedSituation: revisedSituation ?? this.revisedSituation,
+      progressChoice: progressChoice ?? this.progressChoice,
     );
   }
 }
@@ -118,55 +123,26 @@ class SituationStepView extends StatelessWidget {
           ],
           if (value.refineResult.reframed.trim().isNotEmpty) ...<Widget>[
             const SizedBox(height: 16),
-            if (value.originalSituation.trim().isNotEmpty) ...<Widget>[
-              _ResultSection(title: '처음 원문', content: value.originalSituation),
-              const SizedBox(height: 12),
-            ],
-            if (value.revisedSituation.trim().isNotEmpty) ...<Widget>[
-              _ResultSection(title: '수정한 문장', content: value.revisedSituation),
-              const SizedBox(height: 12),
-            ],
-            _ResultSection(
-              title: '원래 의미',
-              content: value.refineResult.original,
+            _ChoiceCard(
+              title: '처음 문장',
+              content: value.originalSituation.trim().isNotEmpty
+                  ? value.originalSituation
+                  : value.rawSituation,
+              isSelected: value.progressChoice == SituationProgressChoice.original,
             ),
+            const SizedBox(height: 12),
             if (value.refineResult.feedback.trim().isNotEmpty) ...<Widget>[
-              const SizedBox(height: 12),
               _ResultSection(
                 title: value.hasPendingEdits ? '이전 피드백' : '피드백',
                 content: value.refineResult.feedback,
               ),
+              const SizedBox(height: 12),
             ],
-            const SizedBox(height: 12),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    '정리된 상황 문장',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: value.refineResult.reframed),
-                    );
-                    if (!context.mounted) {
-                      return;
-                    }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('정리된 문장을 복사했어.')),
-                    );
-                  },
-                  icon: const Icon(Icons.copy, size: 18),
-                  label: const Text('복사'),
-                ),
-              ],
+            _ChoiceCard(
+              title: '다듬은 문장',
+              content: value.refineResult.reframed,
+              isSelected: value.progressChoice == SituationProgressChoice.reframed,
             ),
-            const SizedBox(height: 8),
-            _ResultSection(title: null, content: value.refineResult.reframed),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerLeft,
@@ -183,6 +159,48 @@ class SituationStepView extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ChoiceCard extends StatelessWidget {
+  const _ChoiceCard({
+    required this.title,
+    required this.content,
+    required this.isSelected,
+  });
+
+  final String title;
+  final String content;
+  final bool isSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color borderColor = isSelected
+        ? const Color(0xFF126E82)
+        : const Color(0xFFB6DDE5);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: isSelected ? 2 : 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          SelectableText(content),
         ],
       ),
     );

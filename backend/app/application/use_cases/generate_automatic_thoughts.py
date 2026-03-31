@@ -16,13 +16,28 @@ class GenerateAutomaticThoughtsUseCase:
         self._generator = generator
         self._translator = translator
 
-    def execute(self, situation: str) -> list[str]:
+    def execute(
+        self,
+        *,
+        situation: str,
+        original_situation: str = "",
+        emotions: list[str] | None = None,
+    ) -> list[str]:
         normalized = situation.strip()
         if not normalized:
             raise ValueError("situation must not be blank.")
 
+        normalized_original = original_situation.strip()
+        normalized_emotions = [
+            emotion.strip() for emotion in (emotions or []) if emotion.strip()
+        ]
+        generation_context = self._build_generation_context(
+            situation=normalized,
+            original_situation=normalized_original,
+            emotions=normalized_emotions,
+        )
         english_situation = self._translator.translate(
-            normalized,
+            generation_context,
             source_language=Language.KOREAN,
             target_language=Language.ENGLISH,
         )
@@ -55,3 +70,17 @@ class GenerateAutomaticThoughtsUseCase:
             )
 
         return translated
+
+    def _build_generation_context(
+        self,
+        *,
+        situation: str,
+        original_situation: str,
+        emotions: list[str],
+    ) -> str:
+        sections = [f"Refined situation:\n{situation}"]
+        if original_situation:
+            sections.append(f"Original situation:\n{original_situation}")
+        if emotions:
+            sections.append("Selected emotions:\n" + "\n".join(f"- {item}" for item in emotions))
+        return "\n\n".join(sections)
