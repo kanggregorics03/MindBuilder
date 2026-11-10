@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     translation_model: str = "openai/gpt-oss-20b"
     translation_prompt_profile: str = "default"
     refinement_language: Language = Language.KOREAN
-    allowed_origins: list[str] = ["*"]
+    allowed_origins: list[str] = ["http://localhost:7357", "http://127.0.0.1:7357"]
 
     model_config = SettingsConfigDict(
         env_file=".env",

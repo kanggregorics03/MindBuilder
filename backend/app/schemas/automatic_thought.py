@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class AutomaticThoughtGenerateRequest(BaseModel):
@@ -8,4 +10,7 @@ class AutomaticThoughtGenerateRequest(BaseModel):
 
 
 class AutomaticThoughtGenerateResponse(BaseModel):
-    automatic_thoughts: list[str]
+    model_config = ConfigDict(strict=True)
+    automatic_thoughts: list[
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+    ] = Field(min_length=1)

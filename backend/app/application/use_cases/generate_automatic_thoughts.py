@@ -1,9 +1,12 @@
 import json
 
+from pydantic import ValidationError
+
 from ..errors import InvalidModelResponseError
 from ..ports.automatic_thought_generator import AutomaticThoughtGenerator
 from ..ports.translator import Translator
 from ...domain.models.language import Language
+from ...schemas.automatic_thought import AutomaticThoughtGenerateResponse
 
 
 class GenerateAutomaticThoughtsUseCase:
@@ -53,23 +56,14 @@ class GenerateAutomaticThoughtsUseCase:
         ).strip()
 
         try:
-            data = json.loads(translated_payload)
-        except json.JSONDecodeError as exc:
-            raise InvalidModelResponseError(
-                "Translated automatic thought payload was not valid JSON."
-            ) from exc
-
-        translated = [
-            str(item).strip()
-            for item in data.get("automatic_thoughts", [])
-            if str(item).strip()
-        ]
-        if not translated:
-            raise InvalidModelResponseError(
-                "Translated automatic thought payload was empty."
+            result = AutomaticThoughtGenerateResponse.model_validate_json(
+                translated_payload
             )
-
-        return translated
+        except ValidationError as exc:
+            raise InvalidModelResponseError(
+                "Translated automatic thought payload was invalid."
+            ) from exc
+        return list(dict.fromkeys(result.automatic_thoughts))
 
     def _build_generation_context(
         self,
@@ -82,5 +76,7 @@ class GenerateAutomaticThoughtsUseCase:
         if original_situation:
             sections.append(f"Original situation:\n{original_situation}")
         if emotions:
-            sections.append("Selected emotions:\n" + "\n".join(f"- {item}" for item in emotions))
+            sections.append(
+                "Selected emotions:\n" + "\n".join(f"- {item}" for item in emotions)
+            )
         return "\n\n".join(sections)

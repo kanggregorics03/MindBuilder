@@ -1,4 +1,4 @@
-import json
+from pydantic import ValidationError
 
 from ...application.errors import InvalidModelResponseError
 from ...application.ports.situation_refiner import SituationRefiner
@@ -34,21 +34,10 @@ class LLMSituationRefiner(SituationRefiner):
             )
 
         try:
-            payload = json.loads(refined)
-        except json.JSONDecodeError as exc:
+            result = SituationRefineResult.model_validate_json(refined)
+        except ValidationError as exc:
             raise InvalidModelResponseError(
-                "Situation refinement model returned invalid JSON."
+                "Situation refinement model returned an invalid result."
             ) from exc
-
-        result = SituationRefineResult(
-            original=str(payload.get("original", "")).strip(),
-            feedback=str(payload.get("feedback", "")).strip(),
-            reframed=str(payload.get("reframed", "")).strip(),
-        )
-
-        if not result.reframed:
-            raise InvalidModelResponseError(
-                "Situation refinement model returned an empty reframed value."
-            )
 
         return result

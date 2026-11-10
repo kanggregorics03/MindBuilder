@@ -66,7 +66,7 @@ Flow:
 
 1. The route validates input and calls `GenerateAutomaticThoughtsUseCase`.
 2. The use case can translate internally as needed for the generator pipeline.
-3. The generator returns multiple candidate automatic thoughts.
+3. The generator returns candidate thoughts as JSON, which is translated back to Korean and validated again.
 
 ## Configuration
 
@@ -120,3 +120,21 @@ python -m venv .venv
 ## Health Check
 
 - `GET /health` returns `{ "status": "ok" }`
+
+
+## Validation and failure contract
+
+LLM JSON is validated with Pydantic: object root, required nonblank strings, and a nonempty list of strings. Generated and translated thought lists use the same schema. Provider errors are not returned or logged verbatim.
+
+| HTTP | Meaning |
+| --- | --- |
+| 400 | Blank input rejected by the use case |
+| 422 | Missing/invalid request fields (FastAPI) |
+| 502 | Provider failure or invalid model output |
+| 500 | Configuration or unexpected internal failure |
+
+Groq calls use a 30-second timeout and no SDK retries. Thought generation makes three calls; there is no overall HTTP deadline. CORS defaults to localhost/127.0.0.1 on port 7357 without credentials. This API has no authentication or rate limiting.
+
+## Offline tests
+
+From `backend/`, install `requirements-dev.txt`, then run `python -m pytest -q` using your virtual environment. Tests inject a synthetic key, fake the provider, and block external sockets. The health endpoint checks process availability only. Actual LLM calls and clinical suitability have not been verified.

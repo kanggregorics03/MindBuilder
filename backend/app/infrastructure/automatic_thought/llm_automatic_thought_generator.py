@@ -1,9 +1,10 @@
-import json
+from pydantic import ValidationError
 
 from ...application.errors import InvalidModelResponseError
 from ...application.ports.automatic_thought_generator import (
     AutomaticThoughtGenerator,
 )
+from ...schemas.automatic_thought import AutomaticThoughtGenerateResponse
 from ..llm.registry import AUTOMATIC_THOUGHT_GENERATION_TASK, TaskLLMRouter
 from ..prompts.registry import PromptRegistry
 
@@ -34,21 +35,9 @@ class LLMAutomaticThoughtGenerator(AutomaticThoughtGenerator):
             )
 
         try:
-            payload = json.loads(response)
-        except json.JSONDecodeError as exc:
+            result = AutomaticThoughtGenerateResponse.model_validate_json(response)
+        except ValidationError as exc:
             raise InvalidModelResponseError(
-                "Automatic thought model returned invalid JSON."
+                "Automatic thought model returned an invalid result."
             ) from exc
-
-        thoughts = [
-            str(item).strip()
-            for item in payload.get("automatic_thoughts", [])
-            if str(item).strip()
-        ]
-        unique_thoughts = list(dict.fromkeys(thoughts))
-        if not unique_thoughts:
-            raise InvalidModelResponseError(
-                "Automatic thought model returned no thoughts."
-            )
-
-        return unique_thoughts
+        return list(dict.fromkeys(result.automatic_thoughts))

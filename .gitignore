@@ -72,3 +72,15 @@ app.*.map.json
 
 # Java / Kotlin
 *.class
+
+# Local user data and signing credentials
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.pem
+*.key
+*.jks
+*.keystore
+key.properties

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SituationRefineRequest(BaseModel):
@@ -6,9 +6,10 @@ class SituationRefineRequest(BaseModel):
 
 
 class SituationRefineResult(BaseModel):
-    original: str
-    feedback: str
-    reframed: str
+    model_config = ConfigDict(strict=True, str_strip_whitespace=True)
+    original: str = Field(min_length=1)
+    feedback: str = Field(min_length=1)
+    reframed: str = Field(min_length=1)
 
 
 class SituationRefineResponse(BaseModel):
